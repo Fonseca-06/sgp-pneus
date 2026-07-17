@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGP Pneus</title>
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+
+<header class="topo">
+  <div class="marca">SGP <span>Pneus</span></div>
+  <nav class="abas">
+    <button class="aba ativa" data-tab="produtos">Produtos</button>
+    <button class="aba" data-tab="clientes">Clientes</button>
+    <button class="aba" data-tab="pedidos">Pedidos</button>
+    <button class="aba" data-tab="config">Configurações</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══════════ PRODUTOS ══════════ -->
+<section id="tab-produtos" class="tela">
+  <div class="busca-hero">
+    <input id="busca-medida" type="search" placeholder="Buscar por medida — ex: 175/70 R13, 185 60 15..." autocomplete="off">
+    <div class="acoes">
+      <button class="btn" id="btn-novo-produto">+ Novo produto</button>
+      <button class="btn primario" id="btn-importar">Importar CSV</button>
+    </div>
+  </div>
+  <div id="resultado-busca"></div>
+</section>
+
+<!-- ══════════ CLIENTES ══════════ -->
+<section id="tab-clientes" class="tela oculta">
+  <div class="placeholder">Módulo de Clientes — próxima etapa.</div>
+</section>
+
+<!-- ══════════ PEDIDOS ══════════ -->
+<section id="tab-pedidos" class="tela oculta">
+  <div class="placeholder">Módulo de Pedidos — próxima etapa.</div>
+</section>
+
+<!-- ══════════ CONFIGURAÇÕES ══════════ -->
+<section id="tab-config" class="tela oculta">
+  <div class="card">
+    <h2>Fornecedores</h2>
+    <form id="form-fornecedor" class="linha-form">
+      <input id="forn-nome" placeholder="Nome do fornecedor" required>
+      <input id="forn-contato" placeholder="Contato (opcional)">
+      <button class="btn primario">Adicionar</button>
+    </form>
+    <div id="lista-fornecedores"></div>
+  </div>
+  <div class="card">
+    <h2>Importações realizadas</h2>
+    <div id="lista-importacoes"></div>
+  </div>
+</section>
+
+</main>
+
+<!-- ══════════ MODAL PRODUTO ══════════ -->
+<div id="modal-produto" class="modal-fundo oculta">
+  <div class="modal">
+    <h2 id="modal-produto-titulo">Novo produto</h2>
+    <form id="form-produto">
+      <input type="hidden" id="prod-id">
+      <div class="grade-form">
+        <label>Fornecedor
+          <select id="prod-fornecedor" required></select>
+        </label>
+        <label>Medida
+          <input id="prod-medida" placeholder="175/70 R13" required>
+        </label>
+        <label>Marca
+          <input id="prod-marca" required>
+        </label>
+        <label>Modelo
+          <input id="prod-modelo" required>
+        </label>
+        <label>Índice de carga
+          <input id="prod-carga" placeholder="82">
+        </label>
+        <label>Índice de velocidade
+          <input id="prod-veloc" placeholder="T">
+        </label>
+        <label>Custo (R$)
+          <input id="prod-custo" inputmode="decimal" required>
+        </label>
+        <label>Preço de venda (R$)
+          <input id="prod-venda" inputmode="decimal" required>
+        </label>
+      </div>
+      <div class="modal-acoes">
+        <button type="button" class="btn" id="btn-cancelar-produto">Cancelar</button>
+        <button type="submit" class="btn primario">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════ MODAL IMPORTAÇÃO ══════════ -->
+<div id="modal-importar" class="modal-fundo oculta">
+  <div class="modal larga">
+    <h2>Importar tabela de preços</h2>
+
+    <div id="imp-passo1">
+      <div class="grade-form">
+        <label>Fornecedor
+          <select id="imp-fornecedor" required></select>
+        </label>
+        <label>Arquivo CSV
+          <input type="file" id="imp-arquivo" accept=".csv,.txt">
+        </label>
+      </div>
+      <p class="dica">Colunas reconhecidas no cabeçalho: <code>medida</code>, <code>marca</code>, <code>modelo</code>, <code>custo</code> (ou <code>preco</code>), <code>preco_venda</code>, <code>indice_carga</code>, <code>indice_veloc</code>. Separador , ou ; detectado automaticamente.</p>
+      <div class="modal-acoes">
+        <button type="button" class="btn" data-fechar-imp>Cancelar</button>
+        <button type="button" class="btn primario" id="btn-analisar">Analisar arquivo</button>
+      </div>
+    </div>
+
+    <div id="imp-passo2" class="oculta">
+      <div id="imp-resumo"></div>
+      <div id="imp-rejeitados"></div>
+      <div class="modal-acoes">
+        <button type="button" class="btn" data-fechar-imp>Cancelar</button>
+        <button type="button" class="btn primario" id="btn-confirmar-imp">Confirmar importação</button>
+      </div>
+    </div>
+
+    <div id="imp-passo3" class="oculta">
+      <div id="imp-resultado"></div>
+      <div class="modal-acoes">
+        <button type="button" class="btn primario" data-fechar-imp>Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="oculta"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
