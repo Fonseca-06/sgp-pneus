@@ -44,31 +44,52 @@ function normMedida(m) {
   return (m || '').toUpperCase().replace(/\s+/g, '')
 }
 
-// Forma canônica de gravação/exibição: "175/70 R13" (RN01)
+// Forma canônica de gravação/exibição (RN01): padrão carro vira "175/70 R13";
+// formatos caminhão/agro/OTR (10.00-20, 28X9-15, 11L-15) ficam como estão, maiúsculos
 function medidaCanonica(m) {
-  return normMedida(m).replace(/R(\d)/g, ' R$1')
+  const norm = normMedida(m)
+  if (/^\d{2,3}(\.\d+)?\/\d{2,3}(\.\d+)?R\d{1,2}(\.\d)?(C|LT)?$/.test(norm)) {
+    return norm.replace(/R(\d)/g, ' R$1')
+  }
+  return norm
 }
 
-// Interpreta a medida digitada de formas variadas (175 70 13, 175/70-13, 175.70.13…)
+// Interpreta a medida digitada de formas variadas (175 70 13, 175/70-13, 10.00 20…)
 function parseMedida(input, indice) {
   const up = (input || '').toUpperCase()
   const direct = normMedida(up)
-  if (indice && indice[direct]) return direct
+  if (indice && indice[direct] !== undefined) return direct
   const suf = (up.match(/(LT|C)\s*$/) || [''])[0].trim()
   const candidatos = []
   for (const nums of [up.match(/\d+\.?\d+|\d+/g), up.match(/\d+/g)]) {
-    if (nums && nums.length >= 3) {
+    if (!nums) continue
+    if (nums.length >= 3) {
       candidatos.push(normMedida(`${nums[0]}/${nums[1]}R${nums[2]}${suf}`))
       candidatos.push(normMedida(`${nums[0]}/${nums[1]}R${nums[2]}`))
+      candidatos.push(normMedida(`${nums[0]}X${nums[1]}-${nums[2]}`))
+      candidatos.push(normMedida(`${nums[0]}/${nums[1]}-${nums[2]}`))
+    }
+    if (nums.length >= 2) {
+      candidatos.push(normMedida(`${nums[0]}-${nums[1]}`))
+      candidatos.push(normMedida(`${nums[0]}R${nums[1]}${suf}`))
+      candidatos.push(normMedida(`${nums[0]}L-${nums[1]}`))
     }
   }
-  for (const c of candidatos) if (indice && indice[c]) return c
+  for (const c of candidatos) if (indice && indice[c] !== undefined) return c
   return candidatos[0] || direct
 }
 
-// Medida reconhecível no padrão largura/perfil aro (linhas fora disso são rejeitadas — UC04 E2)
+// Medida reconhecível em algum dos padrões do mercado (linhas fora disso são rejeitadas — UC04 E2)
 function medidaValida(canonica) {
-  return /^\d{2,3}(\.\d+)?\/\d{2,3}(\.\d+)? R\d{2}(\.\d)?(C|LT)?$/.test(canonica)
+  return [
+    /^\d{2,3}(\.\d+)?\/\d{2,3}(\.\d+)? R\d{1,2}(\.\d)?(C|LT)?$/,   // 175/70 R13
+    /^\d+(\.\d+)?R\d+(\.\d+)?(LT|C)?$/,                            // 7.50R16LT, 185R14C
+    /^\d+(\.\d+)?-\d+(\.\d+)?$/,                                   // 10.00-20, 10-16.5
+    /^\d+(\.\d+)?X\d+(\.\d+)?(-\d+(\.\d+)?)?(R\d+(\.\d+)?)?$/,     // 28X9-15, 31X10.50R15
+    /^\d+(\.\d+)?\/\d+(\.\d+)?$/,                                  // 12.00/24
+    /^\d+(\.\d+)?\/\d+(\.\d+)?(-|R)\d+(\.\d+)?(C|LT)?$/,           // 12.5/80-18, 400/60-15.5
+    /^\d+(\.\d+)?L-\d+(\.\d+)?$/                                   // 11L-15 (agrícola)
+  ].some(re => re.test(canonica))
 }
 
 // ─── CSV (aceita , ou ; como separador, BOM do Excel e preço com vírgula) ─────
@@ -119,6 +140,7 @@ document.querySelectorAll('.aba').forEach(btn => {
     document.querySelectorAll('.tela').forEach(t => t.classList.add('oculta'))
     document.getElementById('tab-' + btn.dataset.tab).classList.remove('oculta')
     if (btn.dataset.tab === 'config') { loadFornecedores(); loadImportacoes() }
+    if (btn.dataset.tab === 'clientes' && !document.getElementById('resultado-clientes').innerHTML) buscarClientes('')
   })
 })
 
@@ -175,9 +197,9 @@ window.toggleFornecedor = async (id, ativo) => {
 // ─── Busca de produtos por medida (RF12, RF13) ────────────────────────────────
 
 async function carregarIndiceMedidas() {
-  const { data } = await db.from('produto').select('medida').eq('ativo', true).limit(5000)
+  const { data } = await db.from('produto').select('medida').eq('ativo', true).limit(10000)
   indiceMedidas = {}
-  for (const p of (data || [])) indiceMedidas[normMedida(p.medida)] = true
+  for (const p of (data || [])) indiceMedidas[normMedida(p.medida)] = p.medida
 }
 
 async function buscarProdutos(termo) {
@@ -190,7 +212,7 @@ async function buscarProdutos(termo) {
   if (termo && termo.trim()) {
     if (indiceMedidas === null) await carregarIndiceMedidas()
     const chave = parseMedida(termo, indiceMedidas)
-    query = query.eq('medida', medidaCanonica(chave))
+    query = query.eq('medida', indiceMedidas[chave] ?? medidaCanonica(chave))
   } else {
     query = query.order('atualizado_em', { ascending: false }).limit(50)
   }
@@ -471,6 +493,284 @@ document.getElementById('btn-confirmar-imp').addEventListener('click', async () 
   indiceMedidas = null
   buscarProdutos(document.getElementById('busca-medida').value)
 })
+
+// ─── Clientes: validação de CPF/CNPJ (RF02) ───────────────────────────────────
+
+function validaCPF(doc) {
+  if (doc.length !== 11 || /^(\d)\1+$/.test(doc)) return false
+  for (const t of [9, 10]) {
+    let soma = 0
+    for (let i = 0; i < t; i++) soma += Number(doc[i]) * (t + 1 - i)
+    const dv = ((soma * 10) % 11) % 10
+    if (dv !== Number(doc[t])) return false
+  }
+  return true
+}
+
+function validaCNPJ(doc) {
+  if (doc.length !== 14 || /^(\d)\1+$/.test(doc)) return false
+  const calc = t => {
+    const pesos = t === 12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2]
+    let soma = 0
+    for (let i = 0; i < t; i++) soma += Number(doc[i]) * pesos[i]
+    const resto = soma % 11
+    return resto < 2 ? 0 : 11 - resto
+  }
+  return calc(12) === Number(doc[12]) && calc(13) === Number(doc[13])
+}
+
+function fmtDocumento(doc) {
+  if (!doc) return '—'
+  if (doc.length === 11) return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  if (doc.length === 14) return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  return doc
+}
+
+// ─── Clientes: busca e listagem (RF05) ────────────────────────────────────────
+
+let clientesCache = {}
+
+async function buscarClientes(termo) {
+  const el = document.getElementById('resultado-clientes')
+  const t = (termo || '').trim()
+  if (t && t.length < 3) { el.innerHTML = '<div class="vazio">Digite ao menos 3 caracteres.</div>'; return }
+
+  let query = db.from('cliente').select('*').order('nome').limit(50)
+  if (t) {
+    const digitos = t.replace(/\D/g, '')
+    const filtros = [`nome.ilike.*${t}*`]
+    if (digitos.length >= 3) {
+      filtros.push(`documento.like.${digitos}*`)
+      filtros.push(`telefone.ilike.*${t}*`, `celular.ilike.*${t}*`)
+    }
+    query = query.or(filtros.join(','))
+  }
+  const { data, error } = await query
+  if (error) { el.innerHTML = '<div class="vazio">Erro ao consultar clientes.</div>'; return }
+  renderClientes(data || [], t)
+}
+
+function renderClientes(clientes, termo) {
+  const el = document.getElementById('resultado-clientes')
+  clientesCache = {}
+  if (!clientes.length) {
+    el.innerHTML = `<div class="vazio">Nenhum cliente encontrado${termo ? ` para "${esc(termo)}"` : ''}.<br><br>
+      <button class="btn primario" onclick="document.getElementById('btn-novo-cliente').click()">+ Cadastrar novo cliente</button></div>`
+    return
+  }
+  el.innerHTML = `<div class="tabela-scroll"><table>
+    <tr><th>Nome</th><th>Documento</th><th>Cidade</th><th>Telefone</th><th>Situação</th></tr>
+    ${clientes.map(c => {
+      clientesCache[c.id] = c
+      return `<tr class="linha-clicavel" onclick="abrirFicha(${c.id})">
+        <td><strong>${esc(c.nome)}</strong> <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span></td>
+        <td>${fmtDocumento(c.documento)}</td>
+        <td>${esc([c.cidade, c.uf].filter(Boolean).join(' / ') || '—')}</td>
+        <td>${esc(c.celular || c.telefone || '—')}</td>
+        <td>${c.ativo ? 'Ativo' : '<span class="badge inativo">Inativo</span>'}</td>
+      </tr>`
+    }).join('')}
+  </table></div>
+  ${clientes.length === 50 ? '<p class="dica">Mostrando os 50 primeiros — refine a busca para ver outros.</p>' : ''}`
+}
+
+let buscaCliTimer
+document.getElementById('busca-cliente').addEventListener('input', e => {
+  clearTimeout(buscaCliTimer)
+  buscaCliTimer = setTimeout(() => buscarClientes(e.target.value), 300)
+})
+
+// ─── Clientes: ficha com histórico (RF08) ─────────────────────────────────────
+
+window.abrirFicha = async id => {
+  const c = clientesCache[id]
+  if (!c) return
+  const modal = document.getElementById('modal-ficha')
+  const campo = (rotulo, valor) => `<div class="campo"><span class="rotulo">${rotulo}</span><span>${esc(valor || '—')}</span></div>`
+  const flags = c.tipo === 'PJ'
+    ? [['Consumidor final', c.consumidor_final], ['Revenda', c.revenda], ['Indústria', c.industria], ['Simples Nacional', c.simples_nacional]]
+        .map(([r, v]) => campo(r, v === null ? null : (v ? 'Sim' : 'Não'))).join('')
+    : ''
+
+  document.getElementById('ficha-conteudo').innerHTML = `
+    <div class="ficha-topo">
+      <div>
+        <h2>${esc(c.nome)} <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span>
+        ${c.ativo ? '' : '<span class="badge inativo">Inativo</span>'}</h2>
+        <span class="suave">${fmtDocumento(c.documento)}</span>
+      </div>
+      <div class="acoes">
+        <button class="btn mini" onclick="editarCliente(${c.id})">Editar</button>
+        <button class="btn mini" onclick="toggleCliente(${c.id}, ${!c.ativo})">${c.ativo ? 'Inativar' : 'Reativar'}</button>
+      </div>
+    </div>
+    <div class="ficha-secao">Contato e endereço</div>
+    <div class="ficha-dados">
+      ${campo('Telefone', c.telefone)}
+      ${campo('Celular', c.celular)}
+      ${campo('E-mail', c.email)}
+      ${campo('CEP', c.cep)}
+      ${campo('Endereço', [c.logradouro, c.numero].filter(Boolean).join(', '))}
+      ${campo('Complemento', c.complemento)}
+      ${campo('Bairro', c.bairro)}
+      ${campo('Cidade / UF', [c.cidade, c.uf].filter(Boolean).join(' / '))}
+    </div>
+    ${c.tipo === 'PJ' ? `
+      <div class="ficha-secao">Dados da empresa</div>
+      <div class="ficha-dados">
+        ${campo('Nome fantasia', c.nome_fantasia)}
+        ${campo('Data de abertura', c.data_abertura ? fmtData(c.data_abertura + 'T12:00:00') : null)}
+        ${campo('Inscrição estadual', c.inscricao_estadual)}
+        ${campo('Inscrição municipal', c.inscricao_municipal)}
+        ${flags}
+        ${campo('Referências comerciais', c.referencias_comerciais)}
+        ${campo('Parecer do vendedor', c.parecer_vendedor)}
+      </div>` : `
+      <div class="ficha-secao">Dados pessoais</div>
+      <div class="ficha-dados">
+        ${campo('Data de nascimento', c.data_nascimento ? fmtData(c.data_nascimento + 'T12:00:00') : null)}
+        ${campo('País', c.pais)}
+      </div>`}
+    <div class="ficha-secao">Comercial</div>
+    <div class="ficha-dados">
+      ${campo('Vendedor responsável', c.vendedor_nome)}
+      ${campo('Segmento', c.segmento)}
+      ${campo('Cliente desde', c.criado_em ? fmtData(c.criado_em) : null)}
+      ${campo('Observações', c.observacao)}
+    </div>
+    <div class="ficha-secao">Histórico de pedidos</div>
+    <div id="ficha-pedidos"><div class="vazio">Carregando...</div></div>
+    <div class="modal-acoes"><button class="btn" onclick="document.getElementById('modal-ficha').classList.add('oculta')">Fechar</button></div>`
+  modal.classList.remove('oculta')
+
+  const { data: pedidos } = await db.from('pedido')
+    .select('numero, emitido_em, total_liquido, situacao')
+    .eq('cliente_id', c.id).order('emitido_em', { ascending: false }).limit(30)
+  document.getElementById('ficha-pedidos').innerHTML = (pedidos && pedidos.length)
+    ? `<div class="tabela-scroll"><table>
+        <tr><th>Nº</th><th>Data</th><th>Total</th><th>Situação</th></tr>
+        ${pedidos.map(p => `<tr><td>${p.numero}</td><td>${fmtData(p.emitido_em)}</td>
+          <td class="preco">${fmtReal(p.total_liquido)}</td><td>${esc(p.situacao)}</td></tr>`).join('')}
+      </table></div>`
+    : '<div class="vazio">Nenhum pedido registrado.</div>'
+}
+
+window.toggleCliente = async (id, ativo) => {
+  const { error } = await db.from('cliente').update({ ativo }).eq('id', id)
+  if (error) return toast('Erro ao alterar cliente', true)
+  toast(ativo ? 'Cliente reativado' : 'Cliente inativado (histórico preservado)')
+  document.getElementById('modal-ficha').classList.add('oculta')
+  buscarClientes(document.getElementById('busca-cliente').value)
+}
+
+// ─── Clientes: cadastro e edição (RF01–RF04, fichas cadastrais PF/PJ) ─────────
+
+function aplicarTipoCliente(tipo) {
+  document.querySelectorAll('.so-pf').forEach(el => el.classList.toggle('oculta', tipo !== 'PF'))
+  document.querySelectorAll('.so-pj').forEach(el => el.classList.toggle('oculta', tipo !== 'PJ'))
+  document.getElementById('rotulo-nome').firstChild.textContent = tipo === 'PJ' ? 'Razão social' : 'Nome completo'
+  document.getElementById('rotulo-doc').firstChild.textContent = tipo === 'PJ' ? 'CNPJ' : 'CPF'
+}
+
+document.querySelectorAll('input[name="cli-tipo"]').forEach(r =>
+  r.addEventListener('change', () => aplicarTipoCliente(r.value)))
+
+document.getElementById('btn-novo-cliente').addEventListener('click', () => {
+  document.getElementById('modal-cliente-titulo').textContent = 'Novo cliente'
+  document.getElementById('form-cliente').reset()
+  document.getElementById('cli-id').value = ''
+  document.querySelector('input[name="cli-tipo"][value="PF"]').checked = true
+  aplicarTipoCliente('PF')
+  document.getElementById('modal-cliente').classList.remove('oculta')
+})
+
+window.editarCliente = id => {
+  const c = clientesCache[id]
+  if (!c) return
+  document.getElementById('modal-ficha').classList.add('oculta')
+  document.getElementById('modal-cliente-titulo').textContent = 'Editar cliente'
+  document.getElementById('form-cliente').reset()
+  document.getElementById('cli-id').value = c.id
+  document.querySelector(`input[name="cli-tipo"][value="${c.tipo}"]`).checked = true
+  aplicarTipoCliente(c.tipo)
+  const set = (idc, v) => { document.getElementById(idc).value = v || '' }
+  set('cli-nome', c.nome); set('cli-fantasia', c.nome_fantasia)
+  set('cli-documento', fmtDocumento(c.documento))
+  set('cli-nascimento', c.data_nascimento); set('cli-abertura', c.data_abertura)
+  set('cli-ie', c.inscricao_estadual); set('cli-im', c.inscricao_municipal)
+  set('cli-telefone', c.telefone); set('cli-celular', c.celular); set('cli-email', c.email)
+  set('cli-cep', c.cep); set('cli-logradouro', c.logradouro); set('cli-numero', c.numero)
+  set('cli-complemento', c.complemento); set('cli-bairro', c.bairro)
+  set('cli-cidade', c.cidade); set('cli-uf', c.uf); set('cli-pais', c.pais || 'Brasil')
+  set('cli-vendedor', c.vendedor_nome); set('cli-referencias', c.referencias_comerciais)
+  set('cli-parecer', c.parecer_vendedor); set('cli-observacao', c.observacao)
+  document.getElementById('cli-consumidor-final').checked = !!c.consumidor_final
+  document.getElementById('cli-revenda').checked = !!c.revenda
+  document.getElementById('cli-industria').checked = !!c.industria
+  document.getElementById('cli-simples').checked = !!c.simples_nacional
+  document.getElementById('modal-cliente').classList.remove('oculta')
+}
+
+document.getElementById('btn-cancelar-cliente').addEventListener('click', () => {
+  document.getElementById('modal-cliente').classList.add('oculta')
+})
+
+document.getElementById('form-cliente').addEventListener('submit', async e => {
+  e.preventDefault()
+  const id = document.getElementById('cli-id').value
+  const tipo = document.querySelector('input[name="cli-tipo"]:checked').value
+  const doc = document.getElementById('cli-documento').value.replace(/\D/g, '')
+
+  if (tipo === 'PF' && !validaCPF(doc)) return toast('CPF inválido — confira os dígitos', true)
+  if (tipo === 'PJ' && !validaCNPJ(doc)) return toast('CNPJ inválido — confira os dígitos', true)
+
+  const v = idc => document.getElementById(idc).value.trim() || null
+  const registro = {
+    tipo, documento: doc,
+    nome: v('cli-nome'),
+    nome_fantasia: tipo === 'PJ' ? v('cli-fantasia') : null,
+    data_nascimento: tipo === 'PF' ? v('cli-nascimento') : null,
+    data_abertura: tipo === 'PJ' ? v('cli-abertura') : null,
+    inscricao_estadual: tipo === 'PJ' ? v('cli-ie') : null,
+    inscricao_municipal: tipo === 'PJ' ? v('cli-im') : null,
+    telefone: formatTelefone(v('cli-telefone')) || null,
+    celular: formatTelefone(v('cli-celular')) || null,
+    email: v('cli-email'),
+    cep: v('cli-cep'), logradouro: v('cli-logradouro'), numero: v('cli-numero'),
+    complemento: v('cli-complemento'), bairro: v('cli-bairro'),
+    cidade: v('cli-cidade'), uf: (v('cli-uf') || '').toUpperCase() || null,
+    pais: tipo === 'PF' ? v('cli-pais') : null,
+    consumidor_final: tipo === 'PJ' ? document.getElementById('cli-consumidor-final').checked : null,
+    revenda: tipo === 'PJ' ? document.getElementById('cli-revenda').checked : null,
+    industria: tipo === 'PJ' ? document.getElementById('cli-industria').checked : null,
+    simples_nacional: tipo === 'PJ' ? document.getElementById('cli-simples').checked : null,
+    vendedor_nome: v('cli-vendedor'),
+    referencias_comerciais: tipo === 'PJ' ? v('cli-referencias') : null,
+    parecer_vendedor: tipo === 'PJ' ? v('cli-parecer') : null,
+    observacao: v('cli-observacao')
+  }
+
+  const { error } = id
+    ? await db.from('cliente').update(registro).eq('id', id)
+    : await db.from('cliente').insert(registro)
+  if (error) {
+    if (error.code === '23505') return toast(`Já existe cliente com esse ${tipo === 'PJ' ? 'CNPJ' : 'CPF'} — busque pelo documento para abrir o cadastro`, true)
+    return toast('Erro ao gravar cliente', true)
+  }
+  toast(id ? 'Cliente atualizado' : 'Cliente cadastrado')
+  document.getElementById('modal-cliente').classList.add('oculta')
+  buscarClientes(document.getElementById('busca-cliente').value || doc)
+  if (!id) document.getElementById('busca-cliente').value = doc
+})
+
+// Telefone BR: (DD) 9XXXX-XXXX / (DD) XXXX-XXXX
+function formatTelefone(vl) {
+  let d = (vl || '').replace(/\D/g, '').replace(/^0+/, '')
+  if (d.length >= 11) d = d.slice(0, 11)
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return (vl || '').trim()
+}
 
 // ─── Histórico de importações ─────────────────────────────────────────────────
 

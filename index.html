@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 
@@ -34,7 +34,13 @@
 
 <!-- ══════════ CLIENTES ══════════ -->
 <section id="tab-clientes" class="tela oculta">
-  <div class="placeholder">Módulo de Clientes — próxima etapa.</div>
+  <div class="busca-hero">
+    <input id="busca-cliente" type="search" placeholder="Buscar cliente por nome, CPF/CNPJ ou telefone (mín. 3 caracteres)..." autocomplete="off">
+    <div class="acoes">
+      <button class="btn primario" id="btn-novo-cliente">+ Novo cliente</button>
+    </div>
+  </div>
+  <div id="resultado-clientes"></div>
 </section>
 
 <!-- ══════════ PEDIDOS ══════════ -->
@@ -101,6 +107,105 @@
   </div>
 </div>
 
+<!-- ══════════ MODAL CLIENTE ══════════ -->
+<div id="modal-cliente" class="modal-fundo oculta">
+  <div class="modal larga">
+    <h2 id="modal-cliente-titulo">Novo cliente</h2>
+    <form id="form-cliente">
+      <input type="hidden" id="cli-id">
+      <div class="tipo-toggle">
+        <label><input type="radio" name="cli-tipo" value="PF" checked> Pessoa Física</label>
+        <label><input type="radio" name="cli-tipo" value="PJ"> Pessoa Jurídica</label>
+      </div>
+      <div class="grade-form">
+        <label class="col2" id="rotulo-nome">Nome completo
+          <input id="cli-nome" required>
+        </label>
+        <label class="so-pj col2">Nome fantasia
+          <input id="cli-fantasia">
+        </label>
+        <label id="rotulo-doc">CPF
+          <input id="cli-documento" required inputmode="numeric">
+        </label>
+        <label class="so-pf">Data de nascimento
+          <input id="cli-nascimento" type="date">
+        </label>
+        <label class="so-pj">Data de abertura
+          <input id="cli-abertura" type="date">
+        </label>
+        <label class="so-pj">Inscrição estadual
+          <input id="cli-ie">
+        </label>
+        <label class="so-pj">Inscrição municipal
+          <input id="cli-im">
+        </label>
+        <label>Telefone
+          <input id="cli-telefone" inputmode="tel">
+        </label>
+        <label>Celular
+          <input id="cli-celular" inputmode="tel">
+        </label>
+        <label class="col2">E-mail
+          <input id="cli-email" type="email">
+        </label>
+        <label>CEP
+          <input id="cli-cep" inputmode="numeric">
+        </label>
+        <label class="col2">Endereço
+          <input id="cli-logradouro">
+        </label>
+        <label>Número
+          <input id="cli-numero">
+        </label>
+        <label>Complemento
+          <input id="cli-complemento">
+        </label>
+        <label>Bairro
+          <input id="cli-bairro">
+        </label>
+        <label>Cidade
+          <input id="cli-cidade">
+        </label>
+        <label>Estado (UF)
+          <input id="cli-uf" maxlength="2">
+        </label>
+        <label class="so-pf">País
+          <input id="cli-pais" value="Brasil">
+        </label>
+        <div class="so-pj col2 flags-pj">
+          <label><input type="checkbox" id="cli-consumidor-final"> Consumidor final</label>
+          <label><input type="checkbox" id="cli-revenda"> Revenda</label>
+          <label><input type="checkbox" id="cli-industria"> É indústria</label>
+          <label><input type="checkbox" id="cli-simples"> Optante Simples Nacional</label>
+        </div>
+        <label class="col2">Vendedor responsável
+          <input id="cli-vendedor">
+        </label>
+        <label class="so-pj col2">Referências comerciais
+          <input id="cli-referencias">
+        </label>
+        <label class="so-pj col2">Parecer do vendedor
+          <input id="cli-parecer">
+        </label>
+        <label class="col2">Observações
+          <input id="cli-observacao">
+        </label>
+      </div>
+      <div class="modal-acoes">
+        <button type="button" class="btn" id="btn-cancelar-cliente">Cancelar</button>
+        <button type="submit" class="btn primario">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════ MODAL FICHA DO CLIENTE ══════════ -->
+<div id="modal-ficha" class="modal-fundo oculta">
+  <div class="modal larga">
+    <div id="ficha-conteudo"></div>
+  </div>
+</div>
+
 <!-- ══════════ MODAL IMPORTAÇÃO ══════════ -->
 <div id="modal-importar" class="modal-fundo oculta">
   <div class="modal larga">
@@ -143,6 +248,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=1"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
