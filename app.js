@@ -141,6 +141,11 @@ document.querySelectorAll('.aba').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.remove('oculta')
     if (btn.dataset.tab === 'config') { loadFornecedores(); loadImportacoes() }
     if (btn.dataset.tab === 'clientes' && !document.getElementById('resultado-clientes').innerHTML) buscarClientes('')
+    if (btn.dataset.tab === 'pedidos') {
+      document.getElementById('pedido-editor').classList.add('oculta')
+      document.getElementById('pedidos-lista').classList.remove('oculta')
+      buscarPedidos()
+    }
   })
 })
 
@@ -600,6 +605,7 @@ window.abrirFicha = async id => {
         <span class="suave">${fmtDocumento(c.documento)}</span>
       </div>
       <div class="acoes">
+        ${c.ativo ? `<button class="btn mini primario" onclick="novoPedidoDoCliente(${c.id})">+ Novo pedido</button>` : ''}
         <button class="btn mini" onclick="editarCliente(${c.id})">Editar</button>
         <button class="btn mini" onclick="toggleCliente(${c.id}, ${!c.ativo})">${c.ativo ? 'Inativar' : 'Reativar'}</button>
       </div>
@@ -770,6 +776,355 @@ function formatTelefone(vl) {
   if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
   return (vl || '').trim()
+}
+
+// ─── Pedidos: lista e filtros (RF35) ──────────────────────────────────────────
+
+const SITUACAO_ROTULO = { ORCAMENTO: 'Orçamento', CONFIRMADO: 'Confirmado', ENTREGUE: 'Entregue', CANCELADO: 'Cancelado' }
+
+async function buscarPedidos() {
+  const el = document.getElementById('resultado-pedidos')
+  const nome = document.getElementById('ped-busca-cliente').value.trim()
+  const situacao = document.getElementById('ped-filtro-situacao').value
+  const de = document.getElementById('ped-filtro-de').value
+  const ate = document.getElementById('ped-filtro-ate').value
+
+  let query = db.from('pedido')
+    .select('*, cliente!inner(nome)')
+    .order('emitido_em', { ascending: false })
+    .limit(50)
+  if (nome) query = query.ilike('cliente.nome', `%${nome}%`)
+  if (situacao) query = query.eq('situacao', situacao)
+  if (de) query = query.gte('emitido_em', de)
+  if (ate) query = query.lte('emitido_em', ate + 'T23:59:59')
+
+  const { data, error } = await query
+  if (error) { el.innerHTML = '<div class="vazio">Erro ao consultar pedidos.</div>'; return }
+  if (!data.length) { el.innerHTML = '<div class="vazio">Nenhum pedido encontrado. Clique em "+ Novo pedido" para emitir um orçamento.</div>'; return }
+  el.innerHTML = `<div class="tabela-scroll"><table>
+    <tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Total</th><th>Validade</th><th>Situação</th></tr>
+    ${data.map(p => `<tr class="linha-clicavel" onclick="abrirPedido(${p.id})">
+      <td><strong>#${p.numero}</strong></td>
+      <td>${fmtData(p.emitido_em)}</td>
+      <td>${esc(p.cliente?.nome || '—')}</td>
+      <td class="preco">${fmtReal(p.total_liquido)}</td>
+      <td class="suave">${p.validade_em ? fmtData(p.validade_em + 'T12:00:00') : '—'}</td>
+      <td><span class="badge ${p.situacao.toLowerCase()}">${SITUACAO_ROTULO[p.situacao]}</span></td>
+    </tr>`).join('')}
+  </table></div>`
+}
+
+;['ped-filtro-situacao', 'ped-filtro-de', 'ped-filtro-ate'].forEach(id =>
+  document.getElementById(id).addEventListener('change', buscarPedidos))
+let buscaPedTimer
+document.getElementById('ped-busca-cliente').addEventListener('input', () => {
+  clearTimeout(buscaPedTimer)
+  buscaPedTimer = setTimeout(buscarPedidos, 300)
+})
+
+// ─── Pedidos: editor (RF25–RF33, RN03, RN05, RN07) ────────────────────────────
+
+let pedidoAtual = null
+
+function novoPedido(cliente) {
+  pedidoAtual = { id: null, situacao: 'ORCAMENTO', cliente: cliente || null, itens: [],
+                  desconto_valor: 0, forma_pagto: '', observacao: '' }
+  document.getElementById('ped-desconto').value = ''
+  document.getElementById('ped-desconto-tipo').value = 'R$'
+  document.getElementById('ped-forma-pagto').value = ''
+  document.getElementById('ped-observacao').value = ''
+  document.getElementById('ped-cliente-input').value = ''
+  document.getElementById('ped-produto-input').value = ''
+  document.getElementById('editor-movimentos').innerHTML = ''
+  abrirEditor()
+}
+
+document.getElementById('btn-novo-pedido').addEventListener('click', () => novoPedido(null))
+document.getElementById('btn-voltar-pedidos').addEventListener('click', () => {
+  document.getElementById('pedido-editor').classList.add('oculta')
+  document.getElementById('pedidos-lista').classList.remove('oculta')
+  buscarPedidos()
+})
+
+function abrirEditor() {
+  document.getElementById('pedidos-lista').classList.add('oculta')
+  document.getElementById('pedido-editor').classList.remove('oculta')
+  const p = pedidoAtual
+  const editavel = p.situacao === 'ORCAMENTO'
+  document.getElementById('editor-titulo').innerHTML = p.id
+    ? `Pedido #${p.numero} <span class="badge ${p.situacao.toLowerCase()}">${SITUACAO_ROTULO[p.situacao]}</span>`
+    : 'Novo orçamento'
+  renderSituacaoAcoes()
+  renderClienteEscolhido()
+  renderItens()
+  renderTotais()
+  document.getElementById('editor-produto-busca').classList.toggle('oculta', !editavel)
+  document.getElementById('btn-salvar-pedido').classList.toggle('oculta', !editavel)
+  ;['ped-desconto', 'ped-desconto-tipo', 'ped-forma-pagto', 'ped-observacao'].forEach(id =>
+    document.getElementById(id).disabled = !editavel)
+}
+
+function renderSituacaoAcoes() {
+  const el = document.getElementById('editor-situacao-acoes')
+  const p = pedidoAtual
+  if (!p.id) { el.innerHTML = ''; return }
+  const transicoes = { ORCAMENTO: ['CONFIRMADO', 'CANCELADO'], CONFIRMADO: ['ENTREGUE', 'CANCELADO'] }[p.situacao] || []
+  el.innerHTML = transicoes.map(t =>
+    `<button class="btn mini ${t === 'CANCELADO' ? '' : 'primario'}" onclick="transicionar(${p.id}, '${t}')">
+      ${t === 'CONFIRMADO' ? 'Confirmar pedido' : t === 'ENTREGUE' ? 'Marcar entregue' : 'Cancelar'}</button>`).join('')
+}
+
+window.transicionar = async (id, para) => {
+  let motivo = null
+  if (para === 'CANCELADO') {
+    motivo = prompt('Motivo do cancelamento (obrigatório):')
+    if (!motivo || !motivo.trim()) return toast('O cancelamento exige motivo', true)
+  }
+  const { error } = await db.rpc('mudar_situacao', { p_pedido_id: id, p_para: para, p_motivo: motivo })
+  if (error) return toast(error.message, true)
+  toast(`Pedido ${SITUACAO_ROTULO[para].toLowerCase()}`)
+  abrirPedido(id)
+}
+
+function renderClienteEscolhido() {
+  const escolhido = document.getElementById('editor-cliente-escolhido')
+  const busca = document.getElementById('editor-cliente-busca')
+  const p = pedidoAtual
+  const editavel = p.situacao === 'ORCAMENTO'
+  if (p.cliente) {
+    escolhido.classList.remove('oculta')
+    busca.classList.add('oculta')
+    escolhido.innerHTML = `<span><strong>${esc(p.cliente.nome)}</strong>
+      <span class="suave">${fmtDocumento(p.cliente.documento)}</span></span>
+      ${editavel ? '<button class="btn mini" onclick="trocarClientePedido()">Trocar</button>' : ''}`
+  } else {
+    escolhido.classList.add('oculta')
+    busca.classList.remove('oculta')
+  }
+}
+
+window.trocarClientePedido = () => {
+  pedidoAtual.cliente = null
+  renderClienteEscolhido()
+  document.getElementById('ped-cliente-input').focus()
+}
+
+let cliPickTimer
+document.getElementById('ped-cliente-input').addEventListener('input', e => {
+  clearTimeout(cliPickTimer)
+  const t = e.target.value.trim()
+  const box = document.getElementById('ped-cliente-resultados')
+  if (t.length < 3) { box.innerHTML = ''; return }
+  cliPickTimer = setTimeout(async () => {
+    const digitos = t.replace(/\D/g, '')
+    const filtros = [`nome.ilike.*${t}*`]
+    if (digitos.length >= 3) filtros.push(`documento.like.${digitos}*`)
+    const { data } = await db.from('cliente').select('id, nome, documento, cidade, uf, ativo')
+      .or(filtros.join(',')).eq('ativo', true).order('nome').limit(8)
+    box.innerHTML = `<div class="opcoes">${(data || []).map(c =>
+      `<div class="opcao" onclick='escolherClientePedido(${JSON.stringify(c).replace(/'/g, "&#39;")})'>
+        <span><strong>${esc(c.nome)}</strong><br><span class="suave">${fmtDocumento(c.documento)} · ${esc([c.cidade, c.uf].filter(Boolean).join('/') || '')}</span></span>
+      </div>`).join('') || '<div class="opcao suave">Nenhum cliente ativo encontrado</div>'}</div>`
+  }, 300)
+})
+
+window.escolherClientePedido = c => {
+  pedidoAtual.cliente = c
+  document.getElementById('ped-cliente-resultados').innerHTML = ''
+  document.getElementById('ped-cliente-input').value = ''
+  renderClienteEscolhido()
+  document.getElementById('ped-produto-input').focus()
+}
+
+let prodPickTimer
+document.getElementById('ped-produto-input').addEventListener('input', e => {
+  clearTimeout(prodPickTimer)
+  const t = e.target.value.trim()
+  const box = document.getElementById('ped-produto-resultados')
+  if (!t) { box.innerHTML = ''; return }
+  prodPickTimer = setTimeout(async () => {
+    if (indiceMedidas === null) await carregarIndiceMedidas()
+    const chave = parseMedida(t, indiceMedidas)
+    const medida = indiceMedidas[chave] ?? medidaCanonica(chave)
+    const { data } = await db.from('produto')
+      .select('id, medida, marca, modelo, indice_carga, indice_veloc, custo, preco_venda')
+      .eq('ativo', true).eq('medida', medida)
+      .order('preco_venda', { ascending: true }).limit(12)
+    box.innerHTML = `<div class="opcoes">${(data || []).map(p =>
+      `<div class="opcao" onclick='addItemPedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+        <span><strong>${esc(p.medida)}</strong> ${esc(p.marca)} ${esc(p.modelo)}</span>
+        <span class="preco">${fmtReal(p.preco_venda)}</span>
+      </div>`).join('') || '<div class="opcao suave">Nenhum pneu encontrado para essa medida</div>'}</div>`
+  }, 300)
+})
+
+window.addItemPedido = p => {
+  // RN03: preço e custo congelados no momento da inclusão
+  const existente = pedidoAtual.itens.find(i => i.produto_id === p.id)
+  if (existente) existente.quantidade++
+  else pedidoAtual.itens.push({
+    produto_id: p.id,
+    descricao: [p.medida, p.marca, p.modelo, [p.indice_carga, p.indice_veloc].filter(Boolean).join('')].filter(Boolean).join(' '),
+    quantidade: 1,
+    preco_unit: Number(p.preco_venda),
+    custo_unit: Number(p.custo),
+    desconto_valor: 0
+  })
+  document.getElementById('ped-produto-resultados').innerHTML = ''
+  document.getElementById('ped-produto-input').value = ''
+  renderItens()
+  renderTotais()
+}
+
+window.setQtdItem = (i, v) => {
+  pedidoAtual.itens[i].quantidade = Math.max(1, parseInt(v) || 1)
+  renderItens(); renderTotais()
+}
+window.setDescItem = (i, v) => {
+  pedidoAtual.itens[i].desconto_valor = Math.max(0, parseNumeroBR(v) || 0)
+  renderItens(); renderTotais()
+}
+window.removerItem = i => {
+  pedidoAtual.itens.splice(i, 1)
+  renderItens(); renderTotais()
+}
+
+function subtotalItem(it) {
+  return it.preco_unit * it.quantidade - it.desconto_valor
+}
+
+function renderItens() {
+  const el = document.getElementById('editor-itens')
+  const editavel = pedidoAtual.situacao === 'ORCAMENTO'
+  if (!pedidoAtual.itens.length) {
+    el.innerHTML = '<div class="vazio">Nenhum item. Busque um pneu pela medida acima.</div>'
+    return
+  }
+  el.innerHTML = `<div class="tabela-scroll itens-tabela"><table>
+    <tr><th>Item</th><th>Qtd</th><th>Preço unit.</th><th>Desc. item (R$)</th><th>Subtotal</th>${editavel ? '<th></th>' : ''}</tr>
+    ${pedidoAtual.itens.map((it, i) => `<tr>
+      <td>${esc(it.descricao)}</td>
+      <td>${editavel ? `<input class="qtd" value="${it.quantidade}" inputmode="numeric" onchange="setQtdItem(${i}, this.value)">` : it.quantidade}</td>
+      <td class="preco">${fmtReal(it.preco_unit)}</td>
+      <td>${editavel ? `<input class="desc-item" value="${it.desconto_valor ? String(it.desconto_valor).replace('.', ',') : ''}" placeholder="0" inputmode="decimal" onchange="setDescItem(${i}, this.value)">` : fmtReal(it.desconto_valor)}</td>
+      <td class="preco">${fmtReal(subtotalItem(it))}</td>
+      ${editavel ? `<td><button class="btn mini" onclick="removerItem(${i})">✕</button></td>` : ''}
+    </tr>`).join('')}
+  </table></div>`
+}
+
+function descontoTotalCalculado(total) {
+  const bruto = parseNumeroBR(document.getElementById('ped-desconto').value) || 0
+  if (document.getElementById('ped-desconto-tipo').value === '%') {
+    return Math.round(total * Math.min(bruto, 100)) / 100
+  }
+  return bruto
+}
+
+function renderTotais() {
+  const total = pedidoAtual.itens.reduce((s, it) => s + subtotalItem(it), 0)
+  const desc = Math.min(descontoTotalCalculado(total), total)
+  const liquido = total - desc
+  const custo = pedidoAtual.itens.reduce((s, it) => s + it.custo_unit * it.quantidade, 0)
+  const temCusto = custo > 0
+  const margem = temCusto && liquido > 0 ? ((liquido - custo) / liquido * 100) : null
+  document.getElementById('editor-totais').innerHTML = `
+    <div class="tot"><span class="rotulo">Total</span><span class="valor">${fmtReal(total)}</span></div>
+    <div class="tot"><span class="rotulo">Desconto</span><span class="valor">${fmtReal(desc)}</span></div>
+    <div class="tot destaque"><span class="rotulo">Total líquido</span><span class="valor">${fmtReal(liquido)}</span></div>
+    ${margem !== null ? `<div class="tot"><span class="rotulo">Margem</span><span class="valor">${margem.toFixed(1)}%</span></div>` : ''}`
+}
+
+;['ped-desconto', 'ped-desconto-tipo'].forEach(id =>
+  document.getElementById(id).addEventListener('input', renderTotais))
+
+document.getElementById('btn-salvar-pedido').addEventListener('click', async () => {
+  const p = pedidoAtual
+  if (!p.cliente) return toast('Selecione o cliente do pedido', true)
+  if (!p.itens.length) return toast('Adicione ao menos um item', true)
+
+  // RN07: desconto que leva o item abaixo do custo exige confirmação expressa
+  const abaixoCusto = p.itens.filter(it => it.custo_unit > 0 && subtotalItem(it) / it.quantidade < it.custo_unit)
+  const total = p.itens.reduce((s, it) => s + subtotalItem(it), 0)
+  const desc = Math.min(descontoTotalCalculado(total), total)
+  if (abaixoCusto.length || (total > 0 && desc > 0 && p.itens.some(it => it.custo_unit > 0) &&
+      (total - desc) < p.itens.reduce((s, it) => s + it.custo_unit * it.quantidade, 0))) {
+    if (!confirm('Atenção: o valor final fica ABAIXO DO CUSTO. Confirmar mesmo assim?')) return
+  }
+
+  const btn = document.getElementById('btn-salvar-pedido')
+  btn.disabled = true
+  const { data, error } = await db.rpc('salvar_pedido', {
+    p_pedido: {
+      id: p.id, cliente_id: p.cliente.id, desconto_valor: desc,
+      forma_pagto: document.getElementById('ped-forma-pagto').value.trim(),
+      observacao: document.getElementById('ped-observacao').value.trim()
+    },
+    p_itens: p.itens.map(it => ({
+      produto_id: it.produto_id, descricao: it.descricao, quantidade: it.quantidade,
+      preco_unit: it.preco_unit.toFixed(2), custo_unit: it.custo_unit.toFixed(2),
+      desconto_valor: it.desconto_valor.toFixed(2)
+    }))
+  })
+  btn.disabled = false
+  if (error) return toast(error.message, true)
+  toast(`Orçamento #${data.numero} salvo`)
+  abrirPedido(data.id)
+})
+
+// ─── Pedidos: abrir existente ─────────────────────────────────────────────────
+
+window.abrirPedido = async id => {
+  const [{ data: p, error }, { data: itens }, { data: movs }] = await Promise.all([
+    db.from('pedido').select('*, cliente(id, nome, documento)').eq('id', id).single(),
+    db.from('pedido_item').select('*').eq('pedido_id', id).order('id'),
+    db.from('pedido_movimento').select('*').eq('pedido_id', id).order('registrado_em')
+  ])
+  if (error || !p) return toast('Erro ao abrir pedido', true)
+
+  pedidoAtual = {
+    id: p.id, numero: p.numero, situacao: p.situacao, cliente: p.cliente,
+    itens: (itens || []).map(it => ({
+      produto_id: it.produto_id, descricao: it.descricao, quantidade: it.quantidade,
+      preco_unit: Number(it.preco_unit), custo_unit: Number(it.custo_unit),
+      desconto_valor: Number(it.desconto_valor)
+    }))
+  }
+  const descTotal = Number(p.desconto_valor)
+  document.getElementById('ped-desconto').value = descTotal ? String(descTotal).replace('.', ',') : ''
+  document.getElementById('ped-desconto-tipo').value = 'R$'
+  document.getElementById('ped-forma-pagto').value = p.forma_pagto || ''
+  document.getElementById('ped-observacao').value = p.observacao || ''
+
+  // aba Pedidos pode não estar ativa (vindo da ficha do cliente)
+  document.querySelectorAll('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.tab === 'pedidos'))
+  document.querySelectorAll('.tela').forEach(t => t.classList.add('oculta'))
+  document.getElementById('tab-pedidos').classList.remove('oculta')
+  document.getElementById('modal-ficha').classList.add('oculta')
+  abrirEditor()
+
+  document.getElementById('editor-movimentos').innerHTML = (movs && movs.length) ? `
+    <div class="ficha-secao">Movimentações</div>
+    <div class="tabela-scroll"><table>
+      <tr><th>Data</th><th>De</th><th>Para</th><th>Motivo</th></tr>
+      ${movs.map(m => `<tr>
+        <td>${new Date(m.registrado_em).toLocaleString('pt-BR')}</td>
+        <td>${m.de ? SITUACAO_ROTULO[m.de] : '—'}</td>
+        <td><span class="badge ${m.para.toLowerCase()}">${SITUACAO_ROTULO[m.para]}</span></td>
+        <td>${esc(m.motivo || '—')}</td>
+      </tr>`).join('')}
+    </table></div>` : ''
+}
+
+// Novo pedido a partir da ficha do cliente (UC02 A1)
+window.novoPedidoDoCliente = id => {
+  const c = clientesCache[id]
+  if (!c) return
+  document.getElementById('modal-ficha').classList.add('oculta')
+  document.querySelectorAll('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.tab === 'pedidos'))
+  document.querySelectorAll('.tela').forEach(t => t.classList.add('oculta'))
+  document.getElementById('tab-pedidos').classList.remove('oculta')
+  novoPedido({ id: c.id, nome: c.nome, documento: c.documento })
 }
 
 // ─── Histórico de importações ─────────────────────────────────────────────────

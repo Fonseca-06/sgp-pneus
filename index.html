@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -45,7 +45,74 @@
 
 <!-- ══════════ PEDIDOS ══════════ -->
 <section id="tab-pedidos" class="tela oculta">
-  <div class="placeholder">Módulo de Pedidos — próxima etapa.</div>
+
+  <div id="pedidos-lista">
+    <div class="busca-hero">
+      <input id="ped-busca-cliente" type="search" placeholder="Buscar pedidos pelo nome do cliente..." autocomplete="off">
+      <select id="ped-filtro-situacao">
+        <option value="">Todas as situações</option>
+        <option value="ORCAMENTO">Orçamento</option>
+        <option value="CONFIRMADO">Confirmado</option>
+        <option value="ENTREGUE">Entregue</option>
+        <option value="CANCELADO">Cancelado</option>
+      </select>
+      <input id="ped-filtro-de" type="date" title="De">
+      <input id="ped-filtro-ate" type="date" title="Até">
+      <div class="acoes">
+        <button class="btn primario" id="btn-novo-pedido">+ Novo pedido</button>
+      </div>
+    </div>
+    <div id="resultado-pedidos"></div>
+  </div>
+
+  <div id="pedido-editor" class="oculta">
+    <div class="card">
+      <div class="ficha-topo">
+        <h2 id="editor-titulo">Novo orçamento</h2>
+        <div class="acoes" id="editor-situacao-acoes"></div>
+      </div>
+
+      <div class="ficha-secao">Cliente</div>
+      <div id="editor-cliente-escolhido" class="oculta escolhido-linha"></div>
+      <div id="editor-cliente-busca">
+        <input id="ped-cliente-input" placeholder="Buscar cliente por nome ou CPF/CNPJ (mín. 3 caracteres)..." autocomplete="off">
+        <div id="ped-cliente-resultados" class="dropdown-resultados"></div>
+      </div>
+
+      <div class="ficha-secao">Itens</div>
+      <div id="editor-produto-busca">
+        <input id="ped-produto-input" placeholder="Adicionar item: buscar pneu pela medida..." autocomplete="off">
+        <div id="ped-produto-resultados" class="dropdown-resultados"></div>
+      </div>
+      <div id="editor-itens"></div>
+
+      <div class="ficha-secao">Valores e condições</div>
+      <div class="grade-form">
+        <label>Desconto sobre o total
+          <div class="desconto-linha">
+            <input id="ped-desconto" inputmode="decimal" placeholder="0">
+            <select id="ped-desconto-tipo"><option value="R$">R$</option><option value="%">%</option></select>
+          </div>
+        </label>
+        <label>Forma de pagamento
+          <input id="ped-forma-pagto" placeholder="PIX, cartão, boleto...">
+        </label>
+        <label class="col2">Observações
+          <input id="ped-observacao">
+        </label>
+      </div>
+
+      <div id="editor-totais" class="totais-caixa"></div>
+
+      <div class="modal-acoes">
+        <button type="button" class="btn" id="btn-voltar-pedidos">Voltar</button>
+        <button type="button" class="btn primario" id="btn-salvar-pedido">Salvar orçamento</button>
+      </div>
+
+      <div id="editor-movimentos"></div>
+    </div>
+  </div>
+
 </section>
 
 <!-- ══════════ CONFIGURAÇÕES ══════════ -->
@@ -248,6 +315,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

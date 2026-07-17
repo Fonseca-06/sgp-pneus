@@ -235,6 +235,68 @@ input:focus, select:focus { border-color: var(--primaria); }
 
 .linha-clicavel { cursor: pointer; }
 
+.dropdown-resultados { position: relative; }
+.dropdown-resultados .opcoes {
+  position: absolute;
+  top: 2px; left: 0; right: 0;
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 30;
+}
+.dropdown-resultados .opcao {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 1px solid var(--fundo);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.dropdown-resultados .opcao:hover { background: #f0f4ff; }
+
+.escolhido-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--fundo);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.desconto-linha { display: flex; gap: 6px; }
+.desconto-linha select { width: 70px; }
+
+.totais-caixa {
+  background: var(--fundo);
+  border-radius: var(--raio);
+  padding: 14px 18px;
+  margin-top: 16px;
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.totais-caixa .tot { display: flex; flex-direction: column; }
+.totais-caixa .tot .rotulo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--texto-suave); }
+.totais-caixa .tot .valor { font-size: 18px; font-weight: 800; }
+.totais-caixa .tot.destaque .valor { color: var(--primaria); font-size: 22px; }
+
+.badge.orcamento  { background: #fef3c7; color: var(--laranja); }
+.badge.confirmado { background: #dbeafe; color: var(--primaria-escura); }
+.badge.entregue   { background: #dcfce7; color: var(--verde); }
+.badge.cancelado  { background: #fee2e2; color: var(--vermelho); }
+
+.itens-tabela input.qtd { width: 64px; text-align: center; }
+.itens-tabela input.desc-item { width: 90px; text-align: right; }
+
 @media (max-width: 640px) {
   .grade-form .col2 { grid-column: span 1; }
   .flags-pj { grid-template-columns: 1fr; }
