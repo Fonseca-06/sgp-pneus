@@ -235,6 +235,40 @@ input:focus, select:focus { border-color: var(--primaria); }
 
 .linha-clicavel { cursor: pointer; }
 
+.radar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.radar-card {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 12px 14px;
+  cursor: pointer;
+  border-left: 4px solid var(--borda);
+}
+.radar-card:hover { border-color: var(--primaria); }
+.radar-card.selecionado { outline: 2px solid var(--primaria); }
+.radar-card .num { font-size: 22px; font-weight: 800; }
+.radar-card .rotulo { font-size: 12px; color: var(--texto-suave); }
+.radar-card.ativo     { border-left-color: var(--verde); }
+.radar-card.esfriando { border-left-color: var(--laranja); }
+.radar-card.inativo   { border-left-color: var(--vermelho); }
+.radar-card.nunca     { border-left-color: var(--texto-suave); }
+
+.filtros-linha { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.filtros-linha select { width: auto; flex: 1; min-width: 130px; font-size: 13px; padding: 8px 10px; }
+
+.btn.whats {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.btn.whats:hover { background: #15803d; color: #fff; }
+
+@media (max-width: 640px) {
+  .radar { grid-template-columns: repeat(2, 1fr); }
+}
+
 .dropdown-resultados { position: relative; }
 .dropdown-resultados .opcoes {
   position: absolute;

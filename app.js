@@ -140,7 +140,10 @@ document.querySelectorAll('.aba').forEach(btn => {
     document.querySelectorAll('.tela').forEach(t => t.classList.add('oculta'))
     document.getElementById('tab-' + btn.dataset.tab).classList.remove('oculta')
     if (btn.dataset.tab === 'config') { loadFornecedores(); loadImportacoes() }
-    if (btn.dataset.tab === 'clientes' && !document.getElementById('resultado-clientes').innerHTML) buscarClientes('')
+    if (btn.dataset.tab === 'clientes') {
+      carregarRadar()
+      if (!document.getElementById('resultado-clientes').innerHTML) buscarClientes('')
+    }
     if (btn.dataset.tab === 'pedidos') {
       document.getElementById('pedido-editor').classList.add('oculta')
       document.getElementById('pedidos-lista').classList.remove('oculta')
@@ -535,12 +538,39 @@ function fmtDocumento(doc) {
 
 let clientesCache = {}
 
+function dataISO(diasAtras) {
+  const d = new Date(Date.now() - diasAtras * 86400000)
+  return d.toISOString().slice(0, 10)
+}
+
+function aplicarFiltrosClientes(query) {
+  const tipo = document.getElementById('fil-tipo').value
+  const canal = document.getElementById('fil-canal').value
+  const atividade = document.getElementById('fil-atividade').value
+  const uf = document.getElementById('fil-uf').value
+  const status = document.getElementById('fil-status').value
+  if (tipo) query = query.eq('tipo', tipo)
+  if (canal) query = query.like('segmento', `${canal}|%`)
+  if (atividade) query = query.ilike('segmento', `%${atividade}%`)
+  if (uf) query = query.eq('uf', uf)
+  if (status === 'ativo') query = query.gte('ultima_compra', dataISO(90))
+  if (status === 'esfriando') query = query.gte('ultima_compra', dataISO(365)).lt('ultima_compra', dataISO(90))
+  if (status === 'inativo') query = query.lt('ultima_compra', dataISO(365))
+  if (status === 'nunca') query = query.is('ultima_compra', null)
+  return query
+}
+
 async function buscarClientes(termo) {
   const el = document.getElementById('resultado-clientes')
-  const t = (termo || '').trim()
+  const t = (termo ?? document.getElementById('busca-cliente').value ?? '').trim()
   if (t && t.length < 3) { el.innerHTML = '<div class="vazio">Digite ao menos 3 caracteres.</div>'; return }
 
-  let query = db.from('cliente').select('*').order('nome').limit(50)
+  const ordem = document.getElementById('fil-ordem').value
+  let query = db.from('cliente').select('*', { count: 'exact' }).limit(50)
+  query = ordem === 'nome'
+    ? query.order('nome')
+    : query.order(ordem, { ascending: false, nullsFirst: false }).order('nome')
+
   if (t) {
     const digitos = t.replace(/\D/g, '')
     const filtros = [`nome.ilike.*${t}*`]
@@ -550,33 +580,63 @@ async function buscarClientes(termo) {
     }
     query = query.or(filtros.join(','))
   }
-  const { data, error } = await query
+  query = aplicarFiltrosClientes(query)
+
+  const { data, count, error } = await query
   if (error) { el.innerHTML = '<div class="vazio">Erro ao consultar clientes.</div>'; return }
+  document.getElementById('clientes-contagem').textContent =
+    count ? `${count.toLocaleString('pt-BR')} cliente${count > 1 ? 's' : ''} encontrado${count > 1 ? 's' : ''}${count > 50 ? ' — mostrando os 50 primeiros' : ''}` : ''
   renderClientes(data || [], t)
+}
+
+function linkWhatsApp(c) {
+  const d = (c.celular || '').replace(/\D/g, '')
+  if (d.length < 10) return ''
+  return `<a class="btn whats" href="https://wa.me/55${d}" target="_blank" onclick="event.stopPropagation()">WhatsApp</a>`
+}
+
+function atividadeCurta(segmento) {
+  const a = (segmento || '').split('|')[1] || ''
+  return a.trim().replace(' (CPF)', '').replace(' (CNPJ)', '')
+}
+
+function diasSemComprar(c) {
+  if (!c.ultima_compra) return null
+  return Math.floor((Date.now() - new Date(c.ultima_compra + 'T12:00:00').getTime()) / 86400000)
+}
+
+function badgeCompra(c) {
+  const dias = diasSemComprar(c)
+  if (dias === null) return '<span class="suave">nunca comprou</span>'
+  const cls = dias <= 90 ? 'entregue' : dias <= 365 ? 'orcamento' : 'cancelado'
+  return `${fmtData(c.ultima_compra + 'T12:00:00')}<br><span class="badge ${cls}">há ${dias} dias</span>`
 }
 
 function renderClientes(clientes, termo) {
   const el = document.getElementById('resultado-clientes')
   clientesCache = {}
   if (!clientes.length) {
-    el.innerHTML = `<div class="vazio">Nenhum cliente encontrado${termo ? ` para "${esc(termo)}"` : ''}.<br><br>
+    el.innerHTML = `<div class="vazio">Nenhum cliente encontrado${termo ? ` para "${esc(termo)}"` : ' com esses filtros'}.<br><br>
       <button class="btn primario" onclick="document.getElementById('btn-novo-cliente').click()">+ Cadastrar novo cliente</button></div>`
     return
   }
   el.innerHTML = `<div class="tabela-scroll"><table>
-    <tr><th>Nome</th><th>Documento</th><th>Cidade</th><th>Telefone</th><th>Situação</th></tr>
+    <tr><th>Nome</th><th>Atividade</th><th>Cidade</th><th>Contato</th><th>Última compra</th><th>Compras</th><th>Frota</th></tr>
     ${clientes.map(c => {
       clientesCache[c.id] = c
       return `<tr class="linha-clicavel" onclick="abrirFicha(${c.id})">
-        <td><strong>${esc(c.nome)}</strong> <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span></td>
-        <td>${fmtDocumento(c.documento)}</td>
+        <td><strong>${esc(c.nome)}</strong> <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span>
+            ${c.ativo ? '' : '<span class="badge inativo">Inativo</span>'}<br>
+            <span class="suave">${fmtDocumento(c.documento)}</span></td>
+        <td class="suave">${esc(atividadeCurta(c.segmento) || '—')}</td>
         <td>${esc([c.cidade, c.uf].filter(Boolean).join(' / ') || '—')}</td>
-        <td>${esc(c.celular || c.telefone || '—')}</td>
-        <td>${c.ativo ? 'Ativo' : '<span class="badge inativo">Inativo</span>'}</td>
+        <td>${esc(c.celular || c.telefone || '—')}<br>${linkWhatsApp(c)}</td>
+        <td>${badgeCompra(c)}</td>
+        <td>${c.qtd_compras ?? '—'}</td>
+        <td>${c.qtd_veiculos || '—'}</td>
       </tr>`
     }).join('')}
-  </table></div>
-  ${clientes.length === 50 ? '<p class="dica">Mostrando os 50 primeiros — refine a busca para ver outros.</p>' : ''}`
+  </table></div>`
 }
 
 let buscaCliTimer
@@ -584,6 +644,60 @@ document.getElementById('busca-cliente').addEventListener('input', e => {
   clearTimeout(buscaCliTimer)
   buscaCliTimer = setTimeout(() => buscarClientes(e.target.value), 300)
 })
+;['fil-tipo', 'fil-canal', 'fil-atividade', 'fil-uf', 'fil-status', 'fil-ordem'].forEach(id =>
+  document.getElementById(id).addEventListener('change', () => buscarClientes()))
+
+// 🎯 Sugestões: bons compradores parados há mais de 90 dias, os maiores primeiro
+document.getElementById('btn-sugestoes').addEventListener('click', () => {
+  document.getElementById('busca-cliente').value = ''
+  document.getElementById('fil-status').value = 'esfriando'
+  document.getElementById('fil-ordem').value = 'qtd_compras'
+  marcarRadar('esfriando')
+  buscarClientes('')
+  toast('Bons compradores parados há 91–365 dias, maiores primeiro — hora de ligar!')
+})
+
+// ─── Radar da carteira ────────────────────────────────────────────────────────
+
+let radarCarregado = false
+
+async function carregarRadar() {
+  if (radarCarregado) return
+  radarCarregado = true
+  const base = () => db.from('cliente').select('id', { count: 'exact', head: true }).eq('ativo', true)
+  const [a, e, i, n] = await Promise.all([
+    base().gte('ultima_compra', dataISO(90)),
+    base().gte('ultima_compra', dataISO(365)).lt('ultima_compra', dataISO(90)),
+    base().lt('ultima_compra', dataISO(365)),
+    base().is('ultima_compra', null)
+  ])
+  const card = (cls, rotulo, count, titulo) =>
+    `<div class="radar-card ${cls}" data-status="${cls}" title="${titulo}" onclick="filtrarRadar('${cls}')">
+      <div class="num">${(count || 0).toLocaleString('pt-BR')}</div><div class="rotulo">${rotulo}</div></div>`
+  document.getElementById('radar-clientes').innerHTML =
+    card('ativo', 'Ativos', a.count, 'Compraram nos últimos 90 dias') +
+    card('esfriando', 'Esfriando', e.count, 'Compraram entre 91 e 365 dias atrás — priorize estes!') +
+    card('inativo', 'Parados +1 ano', i.count, 'Última compra há mais de 1 ano') +
+    card('nunca', 'Nunca compraram', n.count, 'Cadastrados sem nenhuma compra')
+}
+
+function marcarRadar(status) {
+  document.querySelectorAll('.radar-card').forEach(c =>
+    c.classList.toggle('selecionado', c.dataset.status === status))
+}
+
+window.filtrarRadar = status => {
+  const sel = document.getElementById('fil-status')
+  const jaAtivo = sel.value === status
+  sel.value = jaAtivo ? '' : status
+  marcarRadar(jaAtivo ? '' : status)
+  buscarClientes()
+}
+
+// UFs no filtro
+document.getElementById('fil-uf').innerHTML = '<option value="">UF: todas</option>' +
+  'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'
+    .split(' ').map(u => `<option>${u}</option>`).join('')
 
 // ─── Clientes: ficha com histórico (RF08) ─────────────────────────────────────
 
@@ -605,6 +719,7 @@ window.abrirFicha = async id => {
         <span class="suave">${fmtDocumento(c.documento)}</span>
       </div>
       <div class="acoes">
+        ${linkWhatsApp(c)}
         ${c.ativo ? `<button class="btn mini primario" onclick="novoPedidoDoCliente(${c.id})">+ Novo pedido</button>` : ''}
         <button class="btn mini" onclick="editarCliente(${c.id})">Editar</button>
         <button class="btn mini" onclick="toggleCliente(${c.id}, ${!c.ativo})">${c.ativo ? 'Inativar' : 'Reativar'}</button>
@@ -641,7 +756,13 @@ window.abrirFicha = async id => {
     <div class="ficha-dados">
       ${campo('Vendedor responsável', c.vendedor_nome)}
       ${campo('Segmento', c.segmento)}
+      ${campo('Categoria', c.categoria)}
       ${campo('Cliente desde', c.criado_em ? fmtData(c.criado_em) : null)}
+      ${campo('Compras acumuladas', c.qtd_compras != null ? String(c.qtd_compras) : null)}
+      ${campo('Primeira compra', c.primeira_compra ? fmtData(c.primeira_compra + 'T12:00:00') : null)}
+      ${campo('Última compra', c.ultima_compra ? `${fmtData(c.ultima_compra + 'T12:00:00')} (há ${diasSemComprar(c)} dias)` : 'Nunca comprou')}
+      ${campo('Frota (veículos)', c.qtd_veiculos ? String(c.qtd_veiculos) : null)}
+      ${campo('Limite de crédito', c.limite_credito ? fmtReal(c.limite_credito) : null)}
       ${campo('Observações', c.observacao)}
     </div>
     <div class="ficha-secao">Histórico de pedidos</div>
@@ -789,11 +910,13 @@ async function buscarPedidos() {
   const de = document.getElementById('ped-filtro-de').value
   const ate = document.getElementById('ped-filtro-ate').value
 
+  const tipoCliente = document.getElementById('ped-filtro-tipo').value
   let query = db.from('pedido')
-    .select('*, cliente!inner(nome)')
+    .select('*, cliente!inner(nome, tipo)')
     .order('emitido_em', { ascending: false })
     .limit(50)
   if (nome) query = query.ilike('cliente.nome', `%${nome}%`)
+  if (tipoCliente) query = query.eq('cliente.tipo', tipoCliente)
   if (situacao) query = query.eq('situacao', situacao)
   if (de) query = query.gte('emitido_em', de)
   if (ate) query = query.lte('emitido_em', ate + 'T23:59:59')
@@ -814,7 +937,7 @@ async function buscarPedidos() {
   </table></div>`
 }
 
-;['ped-filtro-situacao', 'ped-filtro-de', 'ped-filtro-ate'].forEach(id =>
+;['ped-filtro-tipo', 'ped-filtro-situacao', 'ped-filtro-de', 'ped-filtro-ate'].forEach(id =>
   document.getElementById(id).addEventListener('change', buscarPedidos))
 let buscaPedTimer
 document.getElementById('ped-busca-cliente').addEventListener('input', () => {

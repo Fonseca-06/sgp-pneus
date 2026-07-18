@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -34,12 +34,53 @@
 
 <!-- ══════════ CLIENTES ══════════ -->
 <section id="tab-clientes" class="tela oculta">
+  <div id="radar-clientes" class="radar"></div>
   <div class="busca-hero">
     <input id="busca-cliente" type="search" placeholder="Buscar cliente por nome, CPF/CNPJ ou telefone (mín. 3 caracteres)..." autocomplete="off">
     <div class="acoes">
+      <button class="btn" id="btn-sugestoes" title="Bons compradores que estão parados há mais de 90 dias">🎯 Quem contatar</button>
       <button class="btn primario" id="btn-novo-cliente">+ Novo cliente</button>
     </div>
   </div>
+  <div class="filtros-linha">
+    <select id="fil-tipo">
+      <option value="">Tipo: todos</option>
+      <option value="PF">Pessoa Física</option>
+      <option value="PJ">Pessoa Jurídica</option>
+    </select>
+    <select id="fil-canal">
+      <option value="">Canal: todos</option>
+      <option value="CF">Consumidor final</option>
+      <option value="RV">Revenda</option>
+    </select>
+    <select id="fil-atividade">
+      <option value="">Atividade: todas</option>
+      <option>TRANSPORTADOR AUTONOMO TRUCK (CPF)</option>
+      <option>TRANSPORTADORA (CNPJ)</option>
+      <option>REVENDA DE PNEUS</option>
+      <option>AUTO PECAS</option>
+      <option>COMERCIO EM GERAL</option>
+      <option>AGRONEGOCIO</option>
+      <option>INDUSTRIA</option>
+    </select>
+    <select id="fil-uf">
+      <option value="">UF: todas</option>
+    </select>
+    <select id="fil-status">
+      <option value="">Compras: todos</option>
+      <option value="ativo">Ativo (comprou ≤ 90 dias)</option>
+      <option value="esfriando">Esfriando (91–365 dias)</option>
+      <option value="inativo">Parado (+ de 1 ano)</option>
+      <option value="nunca">Nunca comprou</option>
+    </select>
+    <select id="fil-ordem">
+      <option value="nome">Ordem: nome</option>
+      <option value="ultima_compra">Compra mais recente</option>
+      <option value="qtd_compras">Mais compras</option>
+      <option value="qtd_veiculos">Maior frota</option>
+    </select>
+  </div>
+  <div id="clientes-contagem" class="dica"></div>
   <div id="resultado-clientes"></div>
 </section>
 
@@ -49,6 +90,11 @@
   <div id="pedidos-lista">
     <div class="busca-hero">
       <input id="ped-busca-cliente" type="search" placeholder="Buscar pedidos pelo nome do cliente..." autocomplete="off">
+      <select id="ped-filtro-tipo">
+        <option value="">Tipo: todos</option>
+        <option value="PF">Pessoa Física</option>
+        <option value="PJ">Pessoa Jurídica</option>
+      </select>
       <select id="ped-filtro-situacao">
         <option value="">Todas as situações</option>
         <option value="ORCAMENTO">Orçamento</option>
@@ -315,6 +361,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

@@ -31,6 +31,22 @@ def data_iso(v):
     return m.group(1) if m else None
 
 
+def inteiro(v):
+    try:
+        n = int(float(str(v).replace(',', '.')))
+        return n if n >= 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def decimal(v):
+    try:
+        n = round(float(str(v).replace(',', '.')), 2)
+        return n if n > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
 def montar_registro(r, idx):
     doc = so_digitos(r[idx['CPF/CNPJ']])
     if len(doc) not in (11, 14):
@@ -54,6 +70,12 @@ def montar_registro(r, idx):
         'uf': (limpa(r[idx['Estado']]) or '')[:2] or None,
         'segmento': limpa(r[idx['Segmento']]),
         'criado_em': data_iso(r[idx['Data Cadastro']]),
+        'categoria': limpa(r[idx['Categoria']]),
+        'qtd_veiculos': inteiro(r[idx['Qtd Veiculos']]),
+        'limite_credito': decimal(r[idx['LIMITE VERUM']]),
+        'qtd_compras': inteiro(r[idx['Qtd Compras Acumulado']]),
+        'primeira_compra': data_iso(r[idx['Data Pri Comp']]),
+        'ultima_compra': data_iso(r[idx['Ultimo Pedido']]),
     }
 
 
