@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -66,6 +66,14 @@
     <select id="fil-uf">
       <option value="">UF: todas</option>
     </select>
+    <select id="fil-beneficio">
+      <option value="">Benefício: todos</option>
+      <option value="com">Com benefício fiscal</option>
+      <option value="Grupo 106">Grupo 106</option>
+      <option value="TTD">TTD</option>
+      <option value="Fabricante">Fabricante</option>
+      <option value="sem">Sem benefício</option>
+    </select>
     <select id="fil-status">
       <option value="">Compras: todos</option>
       <option value="ativo">Ativo (comprou ≤ 90 dias)</option>
@@ -120,6 +128,7 @@
 
       <div class="ficha-secao">Cliente</div>
       <div id="editor-cliente-escolhido" class="oculta escolhido-linha"></div>
+      <div id="editor-cliente-aviso"></div>
       <div id="editor-cliente-busca">
         <input id="ped-cliente-input" placeholder="Buscar cliente por nome ou CPF/CNPJ (mín. 3 caracteres)..." autocomplete="off">
         <div id="ped-cliente-resultados" class="dropdown-resultados"></div>
@@ -291,6 +300,14 @@
           <label><input type="checkbox" id="cli-industria"> É indústria</label>
           <label><input type="checkbox" id="cli-simples"> Optante Simples Nacional</label>
         </div>
+        <label class="col2">Benefício fiscal
+          <input id="cli-beneficio" list="lista-beneficios" placeholder="Nenhum — ou selecione/digite o benefício">
+          <datalist id="lista-beneficios">
+            <option value="Grupo 106">
+            <option value="TTD">
+            <option value="Fabricante">
+          </datalist>
+        </label>
         <label class="col2">Vendedor responsável
           <input id="cli-vendedor">
         </label>
@@ -361,6 +378,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

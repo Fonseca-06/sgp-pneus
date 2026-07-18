@@ -549,10 +549,14 @@ function aplicarFiltrosClientes(query) {
   const atividade = document.getElementById('fil-atividade').value
   const uf = document.getElementById('fil-uf').value
   const status = document.getElementById('fil-status').value
+  const beneficio = document.getElementById('fil-beneficio').value
   if (tipo) query = query.eq('tipo', tipo)
   if (canal) query = query.like('segmento', `${canal}|%`)
   if (atividade) query = query.ilike('segmento', `%${atividade}%`)
   if (uf) query = query.eq('uf', uf)
+  if (beneficio === 'com') query = query.not('beneficio_fiscal', 'is', null)
+  else if (beneficio === 'sem') query = query.is('beneficio_fiscal', null)
+  else if (beneficio) query = query.eq('beneficio_fiscal', beneficio)
   if (status === 'ativo') query = query.gte('ultima_compra', dataISO(90))
   if (status === 'esfriando') query = query.gte('ultima_compra', dataISO(365)).lt('ultima_compra', dataISO(90))
   if (status === 'inativo') query = query.lt('ultima_compra', dataISO(365))
@@ -626,6 +630,7 @@ function renderClientes(clientes, termo) {
       clientesCache[c.id] = c
       return `<tr class="linha-clicavel" onclick="abrirFicha(${c.id})">
         <td><strong>${esc(c.nome)}</strong> <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span>
+            ${c.beneficio_fiscal ? `<span class="badge beneficio" title="Cliente com benefício fiscal">★ ${esc(c.beneficio_fiscal)}</span>` : ''}
             ${c.ativo ? '' : '<span class="badge inativo">Inativo</span>'}<br>
             <span class="suave">${fmtDocumento(c.documento)}</span></td>
         <td class="suave">${esc(atividadeCurta(c.segmento) || '—')}</td>
@@ -644,7 +649,7 @@ document.getElementById('busca-cliente').addEventListener('input', e => {
   clearTimeout(buscaCliTimer)
   buscaCliTimer = setTimeout(() => buscarClientes(e.target.value), 300)
 })
-;['fil-tipo', 'fil-canal', 'fil-atividade', 'fil-uf', 'fil-status', 'fil-ordem'].forEach(id =>
+;['fil-tipo', 'fil-canal', 'fil-atividade', 'fil-uf', 'fil-beneficio', 'fil-status', 'fil-ordem'].forEach(id =>
   document.getElementById(id).addEventListener('change', () => buscarClientes()))
 
 // 🎯 Sugestões: bons compradores parados há mais de 90 dias, os maiores primeiro
@@ -715,6 +720,7 @@ window.abrirFicha = async id => {
     <div class="ficha-topo">
       <div>
         <h2>${esc(c.nome)} <span class="badge ${c.tipo.toLowerCase()}">${c.tipo}</span>
+        ${c.beneficio_fiscal ? `<span class="badge beneficio">★ Benefício: ${esc(c.beneficio_fiscal)}</span>` : ''}
         ${c.ativo ? '' : '<span class="badge inativo">Inativo</span>'}</h2>
         <span class="suave">${fmtDocumento(c.documento)}</span>
       </div>
@@ -754,6 +760,7 @@ window.abrirFicha = async id => {
       </div>`}
     <div class="ficha-secao">Comercial</div>
     <div class="ficha-dados">
+      ${campo('Benefício fiscal', c.beneficio_fiscal)}
       ${campo('Vendedor responsável', c.vendedor_nome)}
       ${campo('Segmento', c.segmento)}
       ${campo('Categoria', c.categoria)}
@@ -829,6 +836,7 @@ window.editarCliente = id => {
   set('cli-cep', c.cep); set('cli-logradouro', c.logradouro); set('cli-numero', c.numero)
   set('cli-complemento', c.complemento); set('cli-bairro', c.bairro)
   set('cli-cidade', c.cidade); set('cli-uf', c.uf); set('cli-pais', c.pais || 'Brasil')
+  set('cli-beneficio', c.beneficio_fiscal)
   set('cli-vendedor', c.vendedor_nome); set('cli-referencias', c.referencias_comerciais)
   set('cli-parecer', c.parecer_vendedor); set('cli-observacao', c.observacao)
   document.getElementById('cli-consumidor-final').checked = !!c.consumidor_final
@@ -871,6 +879,7 @@ document.getElementById('form-cliente').addEventListener('submit', async e => {
     revenda: tipo === 'PJ' ? document.getElementById('cli-revenda').checked : null,
     industria: tipo === 'PJ' ? document.getElementById('cli-industria').checked : null,
     simples_nacional: tipo === 'PJ' ? document.getElementById('cli-simples').checked : null,
+    beneficio_fiscal: v('cli-beneficio'),
     vendedor_nome: v('cli-vendedor'),
     referencias_comerciais: tipo === 'PJ' ? v('cli-referencias') : null,
     parecer_vendedor: tipo === 'PJ' ? v('cli-parecer') : null,
@@ -1014,6 +1023,10 @@ function renderClienteEscolhido() {
   const busca = document.getElementById('editor-cliente-busca')
   const p = pedidoAtual
   const editavel = p.situacao === 'ORCAMENTO'
+  const aviso = document.getElementById('editor-cliente-aviso')
+  aviso.innerHTML = (p.cliente && p.cliente.beneficio_fiscal)
+    ? `<div class="aviso-beneficio">★ Atenção: cliente com benefício fiscal (${esc(p.cliente.beneficio_fiscal)}) — confira preço e tributação antes de fechar.</div>`
+    : ''
   if (p.cliente) {
     escolhido.classList.remove('oculta')
     busca.classList.add('oculta')
@@ -1042,7 +1055,7 @@ document.getElementById('ped-cliente-input').addEventListener('input', e => {
     const digitos = t.replace(/\D/g, '')
     const filtros = [`nome.ilike.*${t}*`]
     if (digitos.length >= 3) filtros.push(`documento.like.${digitos}*`)
-    const { data } = await db.from('cliente').select('id, nome, documento, cidade, uf, ativo')
+    const { data } = await db.from('cliente').select('id, nome, documento, cidade, uf, ativo, beneficio_fiscal')
       .or(filtros.join(',')).eq('ativo', true).order('nome').limit(8)
     box.innerHTML = `<div class="opcoes">${(data || []).map(c =>
       `<div class="opcao" onclick='escolherClientePedido(${JSON.stringify(c).replace(/'/g, "&#39;")})'>
@@ -1199,7 +1212,7 @@ document.getElementById('btn-salvar-pedido').addEventListener('click', async () 
 
 window.abrirPedido = async id => {
   const [{ data: p, error }, { data: itens }, { data: movs }] = await Promise.all([
-    db.from('pedido').select('*, cliente(id, nome, documento)').eq('id', id).single(),
+    db.from('pedido').select('*, cliente(id, nome, documento, beneficio_fiscal)').eq('id', id).single(),
     db.from('pedido_item').select('*').eq('pedido_id', id).order('id'),
     db.from('pedido_movimento').select('*').eq('pedido_id', id).order('registrado_em')
   ])
@@ -1247,7 +1260,7 @@ window.novoPedidoDoCliente = id => {
   document.querySelectorAll('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.tab === 'pedidos'))
   document.querySelectorAll('.tela').forEach(t => t.classList.add('oculta'))
   document.getElementById('tab-pedidos').classList.remove('oculta')
-  novoPedido({ id: c.id, nome: c.nome, documento: c.documento })
+  novoPedido({ id: c.id, nome: c.nome, documento: c.documento, beneficio_fiscal: c.beneficio_fiscal })
 }
 
 // ─── Histórico de importações ─────────────────────────────────────────────────

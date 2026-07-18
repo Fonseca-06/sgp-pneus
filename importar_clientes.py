@@ -70,6 +70,7 @@ def montar_registro(r, idx):
         'uf': (limpa(r[idx['Estado']]) or '')[:2] or None,
         'segmento': limpa(r[idx['Segmento']]),
         'criado_em': data_iso(r[idx['Data Cadastro']]),
+        'beneficio_fiscal': limpa(r[idx['Benefício Fiscal']]),
         'categoria': limpa(r[idx['Categoria']]),
         'qtd_veiculos': inteiro(r[idx['Qtd Veiculos']]),
         'limite_credito': decimal(r[idx['LIMITE VERUM']]),
