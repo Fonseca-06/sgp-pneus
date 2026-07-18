@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -23,7 +23,7 @@
 <!-- ══════════ PRODUTOS ══════════ -->
 <section id="tab-produtos" class="tela">
   <div class="busca-hero">
-    <input id="busca-medida" type="search" placeholder="Buscar por medida — ex: 175/70 R13, 185 60 15..." autocomplete="off">
+    <input id="busca-medida" type="search" placeholder="Buscar por medida ou código — ex: 175 70, 1000 20, 215 55, KIT 10.00..." autocomplete="off">
     <div class="acoes">
       <button class="btn" id="btn-novo-produto">+ Novo produto</button>
       <button class="btn primario" id="btn-importar">Importar CSV</button>
@@ -136,7 +136,7 @@
 
       <div class="ficha-secao">Itens</div>
       <div id="editor-produto-busca">
-        <input id="ped-produto-input" placeholder="Adicionar item: buscar pneu pela medida..." autocomplete="off">
+        <input id="ped-produto-input" placeholder="Adicionar item: buscar pela medida (mesmo incompleta) ou pelo código..." autocomplete="off">
         <div id="ped-produto-resultados" class="dropdown-resultados"></div>
       </div>
       <div id="editor-itens"></div>
@@ -207,6 +207,9 @@
         </label>
         <label>Modelo
           <input id="prod-modelo" required>
+        </label>
+        <label>Código (fornecedor)
+          <input id="prod-codigo" placeholder="opcional">
         </label>
         <label>Índice de carga
           <input id="prod-carga" placeholder="82">
@@ -378,6 +381,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

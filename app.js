@@ -204,30 +204,75 @@ window.toggleFornecedor = async (id, ativo) => {
 
 // ─── Busca de produtos por medida (RF12, RF13) ────────────────────────────────
 
+let indiceCodigos = []
+
 async function carregarIndiceMedidas() {
-  const { data } = await db.from('produto').select('medida').eq('ativo', true).limit(10000)
+  const { data } = await db.from('produto').select('id, medida, codigo').eq('ativo', true).limit(10000)
   indiceMedidas = {}
-  for (const p of (data || [])) indiceMedidas[normMedida(p.medida)] = p.medida
+  indiceCodigos = []
+  for (const p of (data || [])) {
+    indiceMedidas[normMedida(p.medida)] = p.medida
+    if (p.codigo) indiceCodigos.push({ a: p.codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''), id: p.id })
+  }
 }
 
-async function buscarProdutos(termo) {
-  const el = document.getElementById('resultado-busca')
+// Busca maleável: casa a sequência digitada (só dígitos, ou dígitos+letras) com
+// qualquer trecho das medidas conhecidas — "1000" acha 10.00-20, "215 55" acha 215/55R17
+function medidasCorrespondentes(termo) {
+  const alnum = (termo || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!alnum || !indiceMedidas) return []
+  const soDigitos = !/[A-Z]/.test(alnum)
+  const alvo = soDigitos ? alnum.replace(/\D/g, '') : alnum
+  const out = []
+  for (const [norm, stored] of Object.entries(indiceMedidas)) {
+    const chave = soDigitos ? norm.replace(/\D/g, '') : norm.replace(/[^A-Z0-9]/g, '')
+    if (chave.includes(alvo)) out.push(stored)
+  }
+  return [...new Set(out)].slice(0, 60)
+}
+
+// Consulta compartilhada (aba Produtos e editor de pedido): medida maleável OU código do fornecedor
+async function consultarProdutos(termo, limite) {
+  if (indiceMedidas === null) await carregarIndiceMedidas()
   let query = db.from('produto')
     .select('*, fornecedor(nome)')
     .eq('ativo', true)
     .order('preco_venda', { ascending: true })
+    .limit(limite)
 
-  if (termo && termo.trim()) {
-    if (indiceMedidas === null) await carregarIndiceMedidas()
-    const chave = parseMedida(termo, indiceMedidas)
-    query = query.eq('medida', indiceMedidas[chave] ?? medidaCanonica(chave))
-  } else {
-    query = query.order('atualizado_em', { ascending: false }).limit(50)
+  const t = (termo || '').trim()
+  const medidas = medidasCorrespondentes(t)
+  if (!medidas.length) {
+    const chave = parseMedida(t, indiceMedidas)
+    if (indiceMedidas[chave]) medidas.push(indiceMedidas[chave])
   }
+  const filtros = []
+  if (medidas.length) filtros.push(`medida.in.(${medidas.map(m => `"${m}"`).join(',')})`)
+  // código também maleável: compara ignorando pontos, hífens e espaços
+  const alnumT = t.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (alnumT.length >= 3) {
+    const ids = indiceCodigos.filter(c => c.a.includes(alnumT)).map(c => c.id).slice(0, 60)
+    if (ids.length) filtros.push(`id.in.(${ids.join(',')})`)
+  }
+  if (!filtros.length) return { data: [] }
+  return query.or(filtros.join(','))
+}
 
-  const { data, error } = await query
-  if (error) { el.innerHTML = '<div class="vazio">Erro ao consultar produtos.</div>'; return }
-  renderProdutos(data || [], termo)
+async function buscarProdutos(termo) {
+  const el = document.getElementById('resultado-busca')
+  let resultado
+  if (termo && termo.trim()) {
+    resultado = await consultarProdutos(termo, 100)
+  } else {
+    resultado = await db.from('produto')
+      .select('*, fornecedor(nome)')
+      .eq('ativo', true)
+      .order('atualizado_em', { ascending: false })
+      .order('preco_venda', { ascending: true })
+      .limit(50)
+  }
+  if (resultado.error) { el.innerHTML = '<div class="vazio">Erro ao consultar produtos.</div>'; return }
+  renderProdutos(resultado.data || [], termo)
 }
 
 function renderProdutos(produtos, termo) {
@@ -244,7 +289,7 @@ function renderProdutos(produtos, termo) {
       return `<tr>
         <td class="medida-tag">${esc(p.medida)}</td>
         <td>${esc(p.marca)}</td>
-        <td>${esc(p.modelo)}</td>
+        <td>${esc(p.modelo)}${p.codigo ? `<br><span class="suave">${esc(p.codigo)}</span>` : ''}</td>
         <td class="suave">${esc([p.indice_carga, p.indice_veloc].filter(Boolean).join(' ') || '—')}</td>
         <td>${esc(p.fornecedor?.nome || '—')}</td>
         <td class="preco">${fmtReal(p.preco_venda)}</td>
@@ -283,6 +328,7 @@ window.editarProduto = p => {
   document.getElementById('prod-medida').value = p.medida
   document.getElementById('prod-marca').value = p.marca
   document.getElementById('prod-modelo').value = p.modelo
+  document.getElementById('prod-codigo').value = p.codigo || ''
   document.getElementById('prod-carga').value = p.indice_carga || ''
   document.getElementById('prod-veloc').value = p.indice_veloc || ''
   document.getElementById('prod-custo').value = String(p.custo).replace('.', ',')
@@ -308,6 +354,7 @@ document.getElementById('form-produto').addEventListener('submit', async e => {
     medida,
     marca: document.getElementById('prod-marca').value.trim(),
     modelo: document.getElementById('prod-modelo').value.trim(),
+    codigo: document.getElementById('prod-codigo').value.trim() || null,
     indice_carga: document.getElementById('prod-carga').value.trim() || null,
     indice_veloc: document.getElementById('prod-veloc').value.trim() || null,
     custo, preco_venda,
@@ -1079,18 +1126,13 @@ document.getElementById('ped-produto-input').addEventListener('input', e => {
   const box = document.getElementById('ped-produto-resultados')
   if (!t) { box.innerHTML = ''; return }
   prodPickTimer = setTimeout(async () => {
-    if (indiceMedidas === null) await carregarIndiceMedidas()
-    const chave = parseMedida(t, indiceMedidas)
-    const medida = indiceMedidas[chave] ?? medidaCanonica(chave)
-    const { data } = await db.from('produto')
-      .select('id, medida, marca, modelo, indice_carga, indice_veloc, custo, preco_venda')
-      .eq('ativo', true).eq('medida', medida)
-      .order('preco_venda', { ascending: true }).limit(12)
+    const { data } = await consultarProdutos(t, 15)
     box.innerHTML = `<div class="opcoes">${(data || []).map(p =>
       `<div class="opcao" onclick='addItemPedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
-        <span><strong>${esc(p.medida)}</strong> ${esc(p.marca)} ${esc(p.modelo)}</span>
+        <span><strong>${esc(p.medida)}</strong> ${esc(p.marca)} ${esc(p.modelo)}
+          ${p.codigo ? `<br><span class="suave">${esc(p.codigo)}</span>` : ''}</span>
         <span class="preco">${fmtReal(p.preco_venda)}</span>
-      </div>`).join('') || '<div class="opcao suave">Nenhum pneu encontrado para essa medida</div>'}</div>`
+      </div>`).join('') || '<div class="opcao suave">Nenhum pneu encontrado — tente parte da medida ou o código</div>'}</div>`
   }, 300)
 })
 

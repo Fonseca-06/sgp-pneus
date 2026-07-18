@@ -100,7 +100,7 @@ def extrair_item(codigo, desc, preco, medida_col):
             resto.append(t)
     modelo = ' '.join(resto).strip() or codigo.strip()
 
-    item = {'medida': medida, 'marca': marca, 'modelo': modelo,
+    item = {'codigo': codigo.strip(), 'medida': medida, 'marca': marca, 'modelo': modelo,
             'custo': '0.00', 'preco_venda': f'{float(preco):.2f}'}
     if indice_carga:
         item['indice_carga'] = indice_carga
