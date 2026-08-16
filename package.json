@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:db": "bash db/testar-migracoes.sh",
     "gates": "npm run build && npm run lint && npm test",
     "dev": "python3 server.py"
   },

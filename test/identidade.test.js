@@ -19,7 +19,10 @@ const HISTORICO = new Set([
   'test/identidade.test.js',
   'test/regressao-dominio.test.js',
   'importar_clientes.py',
-  'importar_pneus.py'
+  'importar_pneus.py',
+  // Reconstrói o estado ANTERIOR à renomeação e cita o nome real do documento
+  // de arquitetura no disco do cliente.
+  'db/baseline.sql'
 ])
 
 const arquivosVersionados = () =>

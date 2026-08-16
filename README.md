@@ -34,6 +34,7 @@ npm run gates   # build + lint + test
 | `npm run build` | Valida sintaxe, confere que todo `getElementById` tem elemento no HTML, exige cache-bust e proíbe `service_role` no cliente |
 | `npm run lint` | ESLint 9 |
 | `npm test` | Vitest + jsdom |
+| `npm run test:db` | Sobe um PostgreSQL descartável, aplica as migrações da F2, confere que a RLS isola a carteira e reverte tudo. Fora do `gates` porque exige `postgresql-16` local |
 
 ## Estado atual
 
