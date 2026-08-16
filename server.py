@@ -6,5 +6,5 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 with socketserver.TCPServer(("", 8020), NoCacheHandler) as httpd:
-    print("SGP Pneus rodando em http://localhost:8020")
+    print("Mira Sales rodando em http://localhost:8020")
     httpd.serve_forever()
