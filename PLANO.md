@@ -200,29 +200,54 @@ saia de `localhost` até a F2 estar pronta**. Decisão do João Pedro.
 
 Registrar a resposta aqui conforme forem esclarecidos.
 
-| # | Pergunta | Bloqueia |
-|---|---|---|
-| 1 | **A base de consulta é a mesma que já está na tabela `cliente`** (48.891 vindos de `Base de dados Mira.xlsx`), ou é um serviço externo separado? | **F3** |
-| 2 | Se for externa: API de terceiro, arquivo importado ou banco compartilhado? Tem contrato, custo por consulta e limite de chamada? | **F3** |
-| 3 | Representante enxerga **todos** os clientes ou só a carteira dele? | **F2** (define a política RLS) |
+| # | Pergunta | Bloqueia | Resposta |
+|---|---|---|---|
+| 1 | A base de consulta é a mesma que já está na tabela `cliente`? | F3 | ✅ **É a mesma, já está no banco.** F3 lê `cliente`; a separação em `base_consulta` somente leitura fica para a fatia de schema |
+| 2 | Se externa: contrato, custo, limite? | F3 | ✅ **Não se aplica** — não há serviço externo |
+| 3 | Representante enxerga todos os clientes ou só a carteira dele? | F2 | ✅ **Só a carteira dele.** RLS: `cliente.representante_id = auth.uid()` |
 | 4 | Cliente cadastrado manualmente sincroniza depois com a base, ou vive só no banco próprio? | **F4** |
 | 5 | Origem e licença dos preços de outras empresas — há autorização de uso? | **F6** |
 | 6 | O comparativo de preços é informativo ou entra no cálculo do pedido? | **F6** |
 | 7 | Fernanda é usuária-piloto? Vale validar a F4 com ela antes de seguir? | F4 (não bloqueia) |
-| 8 | Existe stack alvo diferente (Next.js/Neon/Vercel), ou seguimos em HTML/JS + Supabase? | todas |
+| 8 | Stack alvo | todas | ✅ **Seguir em HTML/JS + Supabase.** O PROMPT descreveu errado; nada é reescrito |
 
 **Nome:** confirmado **Mira Sales**. Grafia fixada na seção 4 (F7).
 
 ---
 
-## 7. Estado da F1
+## 7. Estado das fatias
 
-| Gate | Resultado |
-|---|---|
-| `npm run build` | ✅ verde — 4 arquivos, 92 ids conferidos |
-| `npm run lint` | ✅ verde — 0 problemas |
-| `npm test` | ✅ verde — 35 testes |
+| Fatia | Estado | Gates |
+|---|---|---|
+| **F1** Inventário e plano | ✅ concluída | build ✅ · lint ✅ · 35 testes ✅ |
+| **F2** Papéis e autenticação | ⏸️ **replanejada, não iniciada** | — |
+| **F3** Camada única de consulta | ✅ concluída | build ✅ · lint ✅ · 59 testes ✅ |
+| **F4** Cadastro com autopreenchimento | ✅ concluída | idem |
+| **F5** Cabeçalho do pedido | ✅ concluída | idem |
+| **F6** Comparação entre marcas | ⏸️ bloqueada (origem e licença dos dados) | — |
+| **F7** Renomeação Mira Sales | ⏸️ não iniciada | — |
 
-**Critério de pronto da F1** ("`PLANO.md` existe, lista arquivos reais do repo e não propõe
-nada fora dos requisitos"): atendido. Nenhuma funcionalidade nova foi codificada nesta fatia —
-só infraestrutura de verificação, que é o que a própria F1 manda fixar.
+### Por que F2 ficou para depois
+
+A ordem do briefing é F2 → F3. Foi invertida **de propósito**, com dois motivos:
+
+1. F2 deixou de ser adaptação e virou construção do zero (achado A1) e depende de
+   migração de schema — que **não consigo aplicar**: o acesso ao Supabase pela API
+   de gestão foi bloqueado neste ambiente. Precisa do João Pedro rodando o SQL.
+2. F3/F4/F5 são o que o cliente efetivamente pediu no áudio e rodam contra o banco
+   atual **sem nenhuma migração**.
+
+⚠️ **O sistema continua sem autenticação.** Não pode sair de `localhost` até a F2
+estar pronta — ver achado A2.
+
+### Decisão de projeto na F3
+
+`consultarPorDocumento()` isola a origem do dado em `buscarNaBase()`. Hoje lê a tabela
+`cliente`; quando a `base_consulta` somente leitura for criada, muda **só o corpo dessa
+função** — cadastro e pedido seguem iguais. É o ADR-03 do documento de arquitetura
+aplicado ao cadastro.
+
+Consequência prática de a origem ser a própria tabela `cliente`: "encontrado na base"
+significa "já cadastrado". Por isso o cadastro, ao encontrar, **preenche e passa a editar
+o registro existente** em vez de deixar o usuário esbarrar na restrição de documento
+único ao salvar.

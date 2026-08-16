@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SGP Pneus</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -130,7 +130,10 @@
       <div id="editor-cliente-escolhido" class="oculta escolhido-linha"></div>
       <div id="editor-cliente-aviso"></div>
       <div id="editor-cliente-busca">
-        <input id="ped-cliente-input" placeholder="Buscar cliente por nome ou CPF/CNPJ (mín. 3 caracteres)..." autocomplete="off">
+        <input id="ped-cliente-doc" inputmode="numeric" autocomplete="off"
+               placeholder="CNPJ ou CPF do cliente — puxa os dados da base">
+        <div id="ped-consulta-status" class="consulta-status oculta"></div>
+        <input id="ped-cliente-input" placeholder="ou busque pelo nome (mín. 3 caracteres)..." autocomplete="off">
         <div id="ped-cliente-resultados" class="dropdown-resultados"></div>
       </div>
 
@@ -250,8 +253,10 @@
           <input id="cli-fantasia">
         </label>
         <label id="rotulo-doc">CPF
-          <input id="cli-documento" required inputmode="numeric">
+          <input id="cli-documento" required inputmode="numeric"
+                 placeholder="Digite o CPF ou CNPJ — os dados vêm da base">
         </label>
+        <div id="cli-consulta-status" class="consulta-status oculta col2"></div>
         <label class="so-pf">Data de nascimento
           <input id="cli-nascimento" type="date">
         </label>
@@ -381,6 +386,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

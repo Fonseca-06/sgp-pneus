@@ -581,6 +581,120 @@ function fmtDocumento(doc) {
   return doc
 }
 
+// ─── Camada única de consulta por documento (R2, R3, R4) ─────────────────────
+// Ponto único de acesso à base de consulta. O cadastro (R3) e o cabeçalho do
+// pedido (R4) chamam esta função — nenhum dos dois conhece a origem do dado.
+// Hoje a origem é a própria tabela `cliente` (a base de 48.891 registros já
+// importada); quando ela for separada numa tabela `base_consulta` somente
+// leitura, muda só o corpo de `buscarNaBase` — os chamadores seguem iguais.
+
+const CONSULTA = {
+  ENCONTRADO: 'ENCONTRADO',
+  FORA_DA_BASE: 'FORA_DA_BASE',
+  INCOMPLETO: 'INCOMPLETO',
+  DOCUMENTO_INVALIDO: 'DOCUMENTO_INVALIDO',
+  ERRO: 'ERRO',
+  TIMEOUT: 'TIMEOUT'
+}
+
+const CONSULTA_TIMEOUT_MS = 8000
+
+// Só dígitos — aceita o documento digitado com ou sem máscara.
+function normalizarDocumento(entrada) {
+  return String(entrada ?? '').replace(/\D/g, '')
+}
+
+function tipoDocumento(digitos) {
+  if (digitos.length === 11) return 'PF'
+  if (digitos.length === 14) return 'PJ'
+  return null
+}
+
+// Para mensagem e log: nunca expõe o documento inteiro em texto puro.
+function mascararDocumento(digitos) {
+  const d = normalizarDocumento(digitos)
+  if (d.length < 5) return '***'
+  return `${d.slice(0, 3)}${'*'.repeat(d.length - 5)}${d.slice(-2)}`
+}
+
+function documentoValido(digitos) {
+  const tipo = tipoDocumento(digitos)
+  if (tipo === 'PF') return validaCPF(digitos)
+  if (tipo === 'PJ') return validaCNPJ(digitos)
+  return false
+}
+
+// Acesso à origem do dado. Isolado de propósito (ADR-03).
+function buscarNaBase(digitos) {
+  return db.from('cliente')
+    .select('*')
+    .eq('documento', digitos)
+    .limit(1)
+}
+
+// Devolve sempre um objeto de estado — nunca lança.
+async function consultarPorDocumento(entrada, opcoes) {
+  const timeoutMs = (opcoes && opcoes.timeoutMs) || CONSULTA_TIMEOUT_MS
+  const documento = normalizarDocumento(entrada)
+  const tipo = tipoDocumento(documento)
+
+  // Validação ANTES de consultar: não gasta chamada nem trafega lixo.
+  if (documento.length !== 11 && documento.length !== 14) {
+    return {
+      estado: CONSULTA.INCOMPLETO, documento, tipo: null, dados: null,
+      mensagem: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).'
+    }
+  }
+  if (!documentoValido(documento)) {
+    return {
+      estado: CONSULTA.DOCUMENTO_INVALIDO, documento, tipo, dados: null,
+      mensagem: `${tipo === 'PJ' ? 'CNPJ' : 'CPF'} inválido — confira os dígitos.`
+    }
+  }
+
+  let expirou
+  const relogio = new Promise(resolve => {
+    expirou = setTimeout(() => resolve({ __timeout: true }), timeoutMs)
+  })
+
+  try {
+    const resposta = await Promise.race([buscarNaBase(documento), relogio])
+    if (resposta && resposta.__timeout) {
+      return {
+        estado: CONSULTA.TIMEOUT, documento, tipo, dados: null,
+        mensagem: 'A consulta demorou demais. Verifique a conexão e tente de novo.'
+      }
+    }
+    if (resposta && resposta.error) {
+      // Diagnóstico sem vazar dado pessoal: o documento vai mascarado.
+      console.warn('Falha ao consultar a base', mascararDocumento(documento), resposta.error.code || '')
+      return {
+        estado: CONSULTA.ERRO, documento, tipo, dados: null,
+        mensagem: 'Não foi possível consultar a base agora. Tente de novo em instantes.'
+      }
+    }
+    const achado = (resposta && resposta.data && resposta.data[0]) || null
+    if (!achado) {
+      return {
+        estado: CONSULTA.FORA_DA_BASE, documento, tipo, dados: null,
+        mensagem: `Cliente fora da base — preencha os dados para cadastrar.`
+      }
+    }
+    return {
+      estado: CONSULTA.ENCONTRADO, documento, tipo, dados: achado,
+      mensagem: `Cliente encontrado na base.`
+    }
+  } catch {
+    console.warn('Erro de rede ao consultar a base', mascararDocumento(documento))
+    return {
+      estado: CONSULTA.ERRO, documento, tipo, dados: null,
+      mensagem: 'Falha de rede ao consultar a base. Tente de novo.'
+    }
+  } finally {
+    clearTimeout(expirou)
+  }
+}
+
 // ─── Clientes: busca e listagem (RF05) ────────────────────────────────────────
 
 let clientesCache = {}
@@ -856,24 +970,35 @@ function aplicarTipoCliente(tipo) {
 document.querySelectorAll('input[name="cli-tipo"]').forEach(r =>
   r.addEventListener('change', () => aplicarTipoCliente(r.value)))
 
-document.getElementById('btn-novo-cliente').addEventListener('click', () => {
+// Abre o cadastro em branco. `documento` opcional: vem do cabeçalho do pedido
+// quando o representante consultou um CNPJ que não está na base (R4).
+function abrirCadastroNovo(documento) {
   document.getElementById('modal-cliente-titulo').textContent = 'Novo cliente'
   document.getElementById('form-cliente').reset()
   document.getElementById('cli-id').value = ''
-  document.querySelector('input[name="cli-tipo"][value="PF"]').checked = true
-  aplicarTipoCliente('PF')
+  ultimoDocConsultado = null
+  const tipo = tipoDocumento(normalizarDocumento(documento || '')) || 'PF'
+  document.querySelector(`input[name="cli-tipo"][value="${tipo}"]`).checked = true
+  aplicarTipoCliente(tipo)
+  mostrarStatusConsulta(null)
   document.getElementById('modal-cliente').classList.remove('oculta')
-})
+  if (documento) {
+    document.getElementById('cli-documento').value = fmtDocumento(normalizarDocumento(documento))
+    consultarDocumentoCadastro()
+  } else {
+    document.getElementById('cli-documento').focus()
+  }
+}
 
-window.editarCliente = id => {
-  const c = clientesCache[id]
-  if (!c) return
-  document.getElementById('modal-ficha').classList.add('oculta')
-  document.getElementById('modal-cliente-titulo').textContent = 'Editar cliente'
-  document.getElementById('form-cliente').reset()
-  document.getElementById('cli-id').value = c.id
-  document.querySelector(`input[name="cli-tipo"][value="${c.tipo}"]`).checked = true
-  aplicarTipoCliente(c.tipo)
+document.getElementById('btn-novo-cliente').addEventListener('click', () => abrirCadastroNovo())
+
+// Preenche o formulário a partir de um registro. Usado tanto pela edição
+// quanto pelo autopreenchimento da consulta por documento (R3) — ponto único.
+function preencherFormCliente(c) {
+  const tipo = c.tipo || tipoDocumento(normalizarDocumento(c.documento)) || 'PF'
+  const radio = document.querySelector(`input[name="cli-tipo"][value="${tipo}"]`)
+  if (radio) radio.checked = true
+  aplicarTipoCliente(tipo)
   const set = (idc, v) => { document.getElementById(idc).value = v || '' }
   set('cli-nome', c.nome); set('cli-fantasia', c.nome_fantasia)
   set('cli-documento', fmtDocumento(c.documento))
@@ -890,12 +1015,89 @@ window.editarCliente = id => {
   document.getElementById('cli-revenda').checked = !!c.revenda
   document.getElementById('cli-industria').checked = !!c.industria
   document.getElementById('cli-simples').checked = !!c.simples_nacional
+}
+
+window.editarCliente = id => {
+  const c = clientesCache[id]
+  if (!c) return
+  document.getElementById('modal-ficha').classList.add('oculta')
+  document.getElementById('modal-cliente-titulo').textContent = 'Editar cliente'
+  document.getElementById('form-cliente').reset()
+  document.getElementById('cli-id').value = c.id
+  ultimoDocConsultado = null
+  preencherFormCliente(c)
+  mostrarStatusConsulta(null)
   document.getElementById('modal-cliente').classList.remove('oculta')
 }
 
 document.getElementById('btn-cancelar-cliente').addEventListener('click', () => {
   document.getElementById('modal-cliente').classList.add('oculta')
 })
+
+// ─── R3: autopreenchimento do cadastro pela consulta por documento ────────────
+
+// Mostra o resultado da consulta acima dos campos. `null` limpa a área.
+function mostrarStatusConsulta(resultado) {
+  const el = document.getElementById('cli-consulta-status')
+  if (!el) return
+  if (!resultado) { el.className = 'consulta-status oculta'; el.textContent = ''; return }
+  const classe = {
+    ENCONTRADO: 'ok',
+    FORA_DA_BASE: 'aviso',
+    DOCUMENTO_INVALIDO: 'erro',
+    INCOMPLETO: 'neutro',
+    ERRO: 'erro',
+    TIMEOUT: 'erro'
+  }[resultado.estado] || 'neutro'
+  el.className = `consulta-status ${classe}`
+  el.textContent = resultado.mensagem
+}
+
+// Último documento já resolvido, para não consultar duas vezes o mesmo.
+// Necessário porque mover o foco para outro campo dispara um segundo `blur`.
+// Só guarda resultado assentado: erro e timeout continuam permitindo repetir.
+let ultimoDocConsultado = null
+
+// Consulta disparada ao terminar de digitar o documento no cadastro.
+async function consultarDocumentoCadastro() {
+  const campo = document.getElementById('cli-documento')
+  const digitos = normalizarDocumento(campo.value)
+  const editando = !!document.getElementById('cli-id').value
+
+  // Documento ainda incompleto: não polui a tela com erro enquanto digita.
+  if (digitos.length !== 11 && digitos.length !== 14) { mostrarStatusConsulta(null); return }
+  // Em edição o documento é o do próprio registro — não reconsulta.
+  if (editando) return
+  if (digitos === ultimoDocConsultado) return
+
+  mostrarStatusConsulta({ estado: 'INCOMPLETO', mensagem: 'Consultando a base...' })
+  const r = await consultarPorDocumento(digitos)
+  mostrarStatusConsulta(r)
+  if (r.estado === CONSULTA.ENCONTRADO || r.estado === CONSULTA.FORA_DA_BASE) {
+    ultimoDocConsultado = digitos
+  }
+
+  if (r.estado === CONSULTA.ENCONTRADO) {
+    // O registro achado é o próprio cadastro: preenche e passa a editar,
+    // em vez de deixar o usuário esbarrar na violação de documento único.
+    preencherFormCliente(r.dados)
+    document.getElementById('cli-id').value = r.dados.id
+    document.getElementById('modal-cliente-titulo').textContent = 'Cliente já cadastrado — confira os dados'
+    mostrarStatusConsulta({
+      estado: 'ENCONTRADO',
+      mensagem: 'Cliente encontrado na base — dados preenchidos. Confira e salve.'
+    })
+  } else if (r.estado === CONSULTA.FORA_DA_BASE) {
+    // Fora da base: mantém o que foi digitado e libera o preenchimento manual.
+    const tipo = tipoDocumento(digitos)
+    const radio = document.querySelector(`input[name="cli-tipo"][value="${tipo}"]`)
+    if (radio) { radio.checked = true; aplicarTipoCliente(tipo) }
+    document.getElementById('cli-nome').focus()
+  }
+}
+
+document.getElementById('cli-documento').addEventListener('blur', consultarDocumentoCadastro)
+document.getElementById('cli-documento').addEventListener('change', consultarDocumentoCadastro)
 
 document.getElementById('form-cliente').addEventListener('submit', async e => {
   e.preventDefault()
@@ -1091,6 +1293,47 @@ window.trocarClientePedido = () => {
   renderClienteEscolhido()
   document.getElementById('ped-cliente-input').focus()
 }
+
+// ─── R4: identificar o cliente do pedido pelo documento ──────────────────────
+// Usa exatamente a mesma camada do cadastro (consultarPorDocumento) — a busca
+// por nome logo abaixo continua existindo para quem não tem o documento à mão.
+
+function mostrarStatusPedido(resultado, documento) {
+  const el = document.getElementById('ped-consulta-status')
+  if (!el) return
+  if (!resultado) { el.className = 'consulta-status oculta'; el.innerHTML = ''; return }
+  const classe = {
+    ENCONTRADO: 'ok', FORA_DA_BASE: 'aviso', DOCUMENTO_INVALIDO: 'erro',
+    INCOMPLETO: 'neutro', ERRO: 'erro', TIMEOUT: 'erro'
+  }[resultado.estado] || 'neutro'
+  el.className = `consulta-status ${classe}`
+  el.innerHTML = esc(resultado.mensagem) + (resultado.estado === CONSULTA.FORA_DA_BASE
+    ? ` <button type="button" class="btn mini" onclick="cadastrarClienteDoPedido('${esc(documento)}')">Cadastrar agora</button>`
+    : '')
+}
+
+window.cadastrarClienteDoPedido = doc => abrirCadastroNovo(doc)
+
+async function consultarDocumentoPedido() {
+  const campo = document.getElementById('ped-cliente-doc')
+  const digitos = normalizarDocumento(campo.value)
+  if (!digitos) { mostrarStatusPedido(null); return }
+  if (digitos.length !== 11 && digitos.length !== 14) { mostrarStatusPedido(null); return }
+
+  mostrarStatusPedido({ estado: 'INCOMPLETO', mensagem: 'Consultando a base...' })
+  const r = await consultarPorDocumento(digitos)
+
+  if (r.estado === CONSULTA.ENCONTRADO) {
+    mostrarStatusPedido(null)
+    campo.value = ''
+    escolherClientePedido(r.dados)   // carrega o cabeçalho do pedido
+    return
+  }
+  mostrarStatusPedido(r, digitos)
+}
+
+document.getElementById('ped-cliente-doc').addEventListener('blur', consultarDocumentoPedido)
+document.getElementById('ped-cliente-doc').addEventListener('change', consultarDocumentoPedido)
 
 let cliPickTimer
 document.getElementById('ped-cliente-input').addEventListener('input', e => {
