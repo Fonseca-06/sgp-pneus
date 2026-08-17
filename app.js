@@ -1571,7 +1571,87 @@ async function loadImportacoes() {
   </table></div>`
 }
 
+// ─── Sessão ───────────────────────────────────────────────────────────────────
+// F2. Antes disto o app abria direto na base de 48.891 pessoas, sem pedir nada.
+
+let sessaoAtual = null
+let appIniciado = false
+
+function mostrarLogin(mostrar) {
+  document.getElementById('tela-login').classList.toggle('oculta', !mostrar)
+  document.body.classList.toggle('sem-sessao', mostrar)
+}
+
+function erroLogin(msg) {
+  const el = document.getElementById('login-erro')
+  el.textContent = msg || ''
+  el.classList.toggle('oculta', !msg)
+}
+
+async function carregarPerfil(usuario) {
+  const { data } = await db.from('perfil_usuario')
+    .select('nome, perfil').eq('id', usuario.id).limit(1)
+  const perfil = Array.isArray(data) ? data[0] : null
+  document.getElementById('sessao-usuario').textContent =
+    perfil?.nome || usuario.email || ''
+  return perfil
+}
+
+function iniciarApp() {
+  if (appIniciado) return
+  appIniciado = true
+  loadFornecedores()
+  buscarProdutos('')
+}
+
+async function aplicarSessao(sessao) {
+  sessaoAtual = sessao || null
+  if (!sessaoAtual) { mostrarLogin(true); return }
+  mostrarLogin(false)
+  await carregarPerfil(sessaoAtual.user || {})
+  iniciarApp()
+}
+
+async function verificarSessao() {
+  const { data } = await db.auth.getSession()
+  await aplicarSessao(data?.session)
+}
+
+document.getElementById('form-login').addEventListener('submit', async (ev) => {
+  ev.preventDefault()
+  erroLogin('')
+  const botao = document.getElementById('btn-entrar')
+  const senha = document.getElementById('login-senha')
+  botao.disabled = true
+  const { data, error } = await db.auth.signInWithPassword({
+    email: document.getElementById('login-email').value.trim(),
+    password: senha.value
+  })
+  botao.disabled = false
+  // Mensagem genérica de propósito: dizer "esse e-mail não existe" entrega
+  // quem tem conta para quem estiver tentando adivinhar.
+  if (error || !data?.session) { erroLogin('E-mail ou senha inválidos.'); return }
+  senha.value = ''
+  await aplicarSessao(data.session)
+})
+
+document.getElementById('btn-sair').addEventListener('click', async () => {
+  await db.auth.signOut()
+  appIniciado = false
+  await aplicarSessao(null)
+})
+
+// Sessão expirada ou revogada em outra aba derruba esta também.
+if (typeof db.auth.onAuthStateChange === 'function') {
+  db.auth.onAuthStateChange((evento, sessao) => {
+    if (evento === 'SIGNED_OUT' || !sessao) {
+      appIniciado = false
+      mostrarLogin(true)
+      sessaoAtual = null
+    }
+  })
+}
+
 // ─── Inicialização ────────────────────────────────────────────────────────────
 
-loadFornecedores()
-buscarProdutos('')
+verificarSessao()

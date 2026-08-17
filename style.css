@@ -369,3 +369,86 @@ input:focus, select:focus { border-color: var(--primaria); }
 .consulta-status.neutro  { background: #1d2430; color: #9fb0c4; border-left-color: #4a5a70; }
 .consulta-status .btn.mini { margin-left: 8px; }
 #ped-cliente-doc { margin-bottom: 4px; }
+
+/* ─── Login ─────────────────────────────────────────────────────────────── */
+
+.login-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--fundo);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-caixa {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 28px;
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-marca { font-size: 24px; }
+
+.login-ajuda {
+  color: var(--texto-suave);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.login-caixa label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--texto-suave);
+}
+
+.login-caixa input {
+  padding: 9px 11px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.login-caixa input:focus {
+  outline: none;
+  border-color: var(--primaria);
+}
+
+.login-erro {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--vermelho);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.login-caixa .btn { margin-top: 4px; justify-content: center; }
+
+/* Sessão no cabeçalho */
+
+.sessao {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sessao-nome {
+  font-size: 13px;
+  color: var(--texto-suave);
+}
+
+/* Enquanto não há sessão, o conteúdo nem é pintado. */
+body.sem-sessao > header,
+body.sem-sessao > main { display: none; }

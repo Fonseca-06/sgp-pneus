@@ -3,7 +3,7 @@
 //     base e libera o preenchimento manual.
 // R4: cabeçalho do pedido informa o CNPJ e puxa os dados da mesma forma.
 import { describe, it, expect } from 'vitest'
-import { montarApp } from './harness.js'
+import { montarApp, assentar } from './harness.js'
 
 const CNPJ_OK = '11222333000181'
 const CPF_OK = '11144477735'
@@ -77,6 +77,9 @@ describe('R3 — cadastro: documento inválido e incompleto', () => {
     const montado = montarApp({ resposta: { data: [], error: null } })
     const w = montado.window
     w.document.getElementById('btn-novo-cliente').dispatchEvent(new w.Event('click'))
+    // A verificação de sessão é assíncrona e também consulta o banco; espera
+    // ela terminar para que o contador meça só o que a digitação provocou.
+    await assentar()
     montado.chamadas.length = 0
 
     await digitarDocumento(w, 'cli-documento', '11144477734')

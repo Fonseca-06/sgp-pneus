@@ -4,9 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mira Sales</title>
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
+
+<!-- ══════════ LOGIN ══════════ -->
+<div id="tela-login" class="login-fundo oculta">
+  <form id="form-login" class="login-caixa">
+    <div class="marca login-marca">Mira <span>Sales</span></div>
+    <p class="login-ajuda">Entre com o e-mail e a senha que você recebeu.</p>
+    <label>E-mail
+      <input id="login-email" type="email" autocomplete="username" required>
+    </label>
+    <label>Senha
+      <input id="login-senha" type="password" autocomplete="current-password" required>
+    </label>
+    <div id="login-erro" class="login-erro oculta"></div>
+    <button id="btn-entrar" type="submit" class="btn primario">Entrar</button>
+  </form>
+</div>
 
 <header class="topo">
   <div class="marca">Mira <span>Sales</span></div>
@@ -16,6 +32,10 @@
     <button class="aba" data-tab="pedidos">Pedidos</button>
     <button class="aba" data-tab="config">Configurações</button>
   </nav>
+  <div class="sessao">
+    <span id="sessao-usuario" class="sessao-nome"></span>
+    <button id="btn-sair" type="button" class="btn mini">Sair</button>
+  </div>
 </header>
 
 <main>
@@ -386,6 +406,6 @@
 <div id="toast" class="oculta"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

@@ -1,7 +1,11 @@
 """Importa a base de clientes (Base de dados Mira.xlsx, aba BASE_UNICA) pro Supabase.
 
-Uso:  python3 importar_clientes.py
+Uso:   export SUPABASE_SERVICE_KEY='...'
+      python3 importar_clientes.py
+
 Idempotente: upsert por documento (on_conflict) — rodar de novo não duplica.
+A credencial vem do ambiente (ver supabase_admin.py); a RLS da F2 barra a
+chave pública.
 """
 import json
 import re
@@ -9,8 +13,8 @@ import urllib.request
 
 import openpyxl
 
-SUPABASE_URL = 'https://xlpxbqyfdwhmfuoexgwm.supabase.co'
-SUPABASE_KEY = 'sb_publishable_TZfPp_39dCMikhQMFtGfSw_7fQThQ9t'
+from supabase_admin import SUPABASE_URL, chave, coluna_existe, representante_id
+
 ARQUIVO = ('/mnt/c/Users/windows/Documents/02 - Trabalho/Clientes/Uendel/'
            'documentos/SGP/Base de dados Mira.xlsx')
 LOTE = 500
@@ -81,12 +85,13 @@ def montar_registro(r, idx):
 
 
 def enviar_lote(registros):
+    k = chave()
     req = urllib.request.Request(
         f'{SUPABASE_URL}/rest/v1/cliente?on_conflict=documento',
         data=json.dumps(registros).encode(),
         headers={
-            'apikey': SUPABASE_KEY,
-            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'apikey': k,
+            'Authorization': f'Bearer {k}',
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates,return=minimal',
         },
@@ -112,6 +117,18 @@ def main():
         else:
             registros.append(reg)
     print(f'{len(registros)} clientes válidos, {pulados} pulados (sem documento)')
+
+    # Depois da 002 a coluna existe e é obrigatória. Antes dela, não existe —
+    # mandar o campo faria o PostgREST recusar o lote inteiro.
+    #
+    # ⚠️ O upsert é merge-duplicates: isto REATRIBUI a carteira dos clientes já
+    # cadastrados, não só dos novos. Hoje é inofensivo (há uma representante
+    # só). Quando houver mais de uma, representante_id() para e exige o UUID
+    # explícito — de propósito, para ninguém reatribuir 48 mil clientes sem ver.
+    if coluna_existe('cliente', 'representante_id'):
+        dono = representante_id()
+        for reg in registros:
+            reg['representante_id'] = dono
 
     enviados = 0
     for i in range(0, len(registros), LOTE):

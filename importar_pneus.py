@@ -6,16 +6,18 @@
 - Marca extraída do fim da descrição (após o último " - ")
 - Modelo = descrição sem prefixo KIT/PNEU, sem a medida e sem a marca
 
-Uso:  python3 importar_pneus.py
+Uso:   export SUPABASE_SERVICE_KEY='...'
+      python3 importar_pneus.py
+
+A credencial vem do ambiente (ver supabase_admin.py); a RLS da F2 barra a
+chave pública.
 """
-import json
 import re
-import urllib.request
+import urllib.parse
 
 import openpyxl
 
-SUPABASE_URL = 'https://xlpxbqyfdwhmfuoexgwm.supabase.co'
-SUPABASE_KEY = 'sb_publishable_TZfPp_39dCMikhQMFtGfSw_7fQThQ9t'
+from supabase_admin import api
 ARQUIVO = ('/mnt/c/Users/windows/Documents/02 - Trabalho/Clientes/Uendel/'
            'documentos/SGP/LISTA DE P´RECO MG 13 07 26.xlsx')
 FORNECEDOR = 'Estoque MG'
@@ -106,18 +108,6 @@ def extrair_item(codigo, desc, preco, medida_col):
         item['indice_carga'] = indice_carga
         item['indice_veloc'] = indice_veloc
     return item, None
-
-
-def api(caminho, payload=None, metodo='POST', extra_headers=None):
-    headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}',
-               'Content-Type': 'application/json'}
-    headers.update(extra_headers or {})
-    req = urllib.request.Request(f'{SUPABASE_URL}{caminho}',
-                                 data=json.dumps(payload).encode() if payload is not None else None,
-                                 headers=headers, method=metodo)
-    with urllib.request.urlopen(req) as resp:
-        corpo = resp.read().decode()
-        return json.loads(corpo) if corpo else None
 
 
 def main():

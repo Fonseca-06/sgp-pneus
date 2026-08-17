@@ -205,11 +205,12 @@ Registrar a resposta aqui conforme forem esclarecidos.
 | 1 | A base de consulta é a mesma que já está na tabela `cliente`? | F3 | ✅ **É a mesma, já está no banco.** F3 lê `cliente`; a separação em `base_consulta` somente leitura fica para a fatia de schema |
 | 2 | Se externa: contrato, custo, limite? | F3 | ✅ **Não se aplica** — não há serviço externo |
 | 3 | Representante enxerga todos os clientes ou só a carteira dele? | F2 | ✅ **Só a carteira dele.** RLS: `cliente.representante_id = auth.uid()` |
-| 4 | Cliente cadastrado manualmente sincroniza depois com a base, ou vive só no banco próprio? | **F4** |
-| 5 | Origem e licença dos preços de outras empresas — há autorização de uso? | **F6** |
-| 6 | O comparativo de preços é informativo ou entra no cálculo do pedido? | **F6** |
-| 7 | Fernanda é usuária-piloto? Vale validar a F4 com ela antes de seguir? | F4 (não bloqueia) |
+| 4 | Cliente cadastrado manualmente sincroniza depois com a base, ou vive só no banco próprio? | F4 | ✅ **Sincroniza.** Como a base de consulta É a tabela `cliente`, cadastrar manualmente já alimenta a base — não há dois lugares para conciliar |
+| 5 | Origem e licença dos preços de outras empresas — há autorização de uso? | **F6** | ⚠️ **Ainda em aberto.** Estrutura e carga prontas (004 + `importar_precos_mira.py`); publicar o comparativo é decisão de negócio. Procedência: NF fotografada, banner e cotação de WhatsApp, DF/MG/SP |
+| 6 | O comparativo de preços é informativo ou entra no cálculo do pedido? | **F6** | — |
+| 7 | Fernanda é usuária-piloto? | F4 (não bloqueia) | ✅ **É a representante.** Única usuária: `fernandaalcantaramattos@gmail.com`. A base inteira é a carteira dela |
 | 8 | Stack alvo | todas | ✅ **Seguir em HTML/JS + Supabase.** O PROMPT descreveu errado; nada é reescrito |
+| 9 | Como integrar o comparativo do Mira? | F6 | ✅ **Copiar os preços para dentro do app** (migração 004), não consultar ao vivo. O Mira segue como fonte da verdade; `preco_mercado.mira_id` guarda a origem |
 
 **Nome:** confirmado **Mira Sales**. Grafia fixada na seção 4 (F7).
 
@@ -220,12 +221,35 @@ Registrar a resposta aqui conforme forem esclarecidos.
 | Fatia | Estado | Gates |
 |---|---|---|
 | **F1** Inventário e plano | ✅ concluída | build ✅ · lint ✅ · 35 testes ✅ |
-| **F2** Papéis e autenticação | ⏸️ **replanejada, não iniciada** | — |
-| **F3** Camada única de consulta | ✅ concluída | build ✅ · lint ✅ · 59 testes ✅ |
+| **F2** Papéis e autenticação | 🟡 **código pronto, não aplicado no banco** | build ✅ · lint ✅ · 71 testes ✅ · 20 checks de migração ✅ |
+| **F3** Camada única de consulta | ✅ concluída | idem |
 | **F4** Cadastro com autopreenchimento | ✅ concluída | idem |
 | **F5** Cabeçalho do pedido | ✅ concluída | idem |
-| **F6** Comparação entre marcas | ⏸️ bloqueada (origem e licença dos dados) | — |
-| **F7** Renomeação Mira Sales | ⏸️ não iniciada | — |
+| **F6** Comparação entre marcas | 🟡 estrutura e carga prontas; UI não feita; licença em aberto | migração 004 ✅ |
+| **F7** Renomeação Mira Sales | ✅ concluída | idem |
+
+### Correção do schema real (17/08/2026)
+
+As migrações foram escritas antes de o banco voltar, e o documento de
+arquitetura induziu a erro. Lendo o banco de verdade:
+
+| Documento sugeria | Banco tem |
+|---|---|
+| tabela `usuario` | tabela **`perfil_usuario`** |
+| ENUM `perfil_usuario` | ENUM **`perfil_acesso`** |
+| `cliente.id` uuid | `cliente.id` **bigint** |
+| — | `perfil_usuario` com RLS ligada e **nenhuma** política (as `dev_all` cobrem só 9 tabelas) |
+
+A pré-checagem da 001 abortou sozinha na primeira execução, como projetada.
+
+### O que falta para a F2 entrar em produção
+
+1. Criar `fernandaalcantaramattos@gmail.com` em Authentication → Users (signup
+   está desativado; a migração não cria credencial de propósito).
+2. Aplicar 001 → 002 → 003 no Supabase. A tentativa de rodar DDL pelo MCP foi
+   barrada pelo classificador de permissões — precisa de autorização explícita
+   ou do editor SQL do painel.
+3. Exportar `SUPABASE_SERVICE_KEY` antes de rodar qualquer script de carga.
 
 ### Por que F2 ficou para depois
 
